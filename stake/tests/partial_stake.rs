@@ -15,7 +15,7 @@ use dusk_vm::{
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use wallet_core::transaction::{
+use dusk_wallet_core::transaction::{
     moonlight_stake, moonlight_stake_reward, moonlight_unstake,
 };
 

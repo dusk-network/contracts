@@ -1,5 +1,17 @@
 [workspace]
-members = []
+members = [
+    # Test contracts
+    "alice",
+    "bob",
+    "charlie",
+    "host_fn",
+
+    # Genesis contracts
+    "stake",
+    "transfer",
+]
+
+resolver = "2"
 
 [workspace.dependencies]
 # Dusk dependencies

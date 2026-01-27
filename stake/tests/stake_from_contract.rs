@@ -17,7 +17,7 @@ use dusk_core::transfer::{Transaction, TRANSFER_CONTRACT};
 use dusk_vm::{execute, ContractData, Error, ExecutionConfig, Session, VM};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use wallet_core::transaction::moonlight_stake_reward;
+use dusk_wallet_core::transaction::moonlight_stake_reward;
 
 pub mod common;
 use crate::common::assert::{assert_moonlight, assert_reward_event};
@@ -58,7 +58,7 @@ fn stake_from_contract() -> Result<(), Error> {
         &mut session,
         ALICE_ID,
         include_bytes!(
-            "../../../target/wasm32-unknown-unknown/release/alice.wasm"
+            "../../target/wasm32-unknown-unknown/release/alice.wasm"
         ),
     )
     .expect("Deploying the alice contract should succeed");
@@ -68,7 +68,7 @@ fn stake_from_contract() -> Result<(), Error> {
         &mut session,
         CHARLIE_ID,
         include_bytes!(
-            "../../../target/wasm32-unknown-unknown/release/charlie.wasm"
+            "../../target/wasm32-unknown-unknown/release/charlie.wasm"
         ),
     )
     .expect("Deploying the charlie contract should succeed");
