@@ -1,5 +1,10 @@
 [workspace]
-members = []
+members = [
+    # Test contracts
+
+    # Genesis contracts
+    "transfer",
+]
 
 resolver = "2"
 
