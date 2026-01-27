@@ -1,6 +1,8 @@
 [workspace]
 members = []
 
+resolver = "2"
+
 [workspace.dependencies]
 # Dusk dependencies
 dusk-core = "1.4.0"
