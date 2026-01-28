@@ -1,6 +1,6 @@
-TARGET_DIR:="../target/dusk"
+TARGET_DIR:="../../target/dusk"
 
-all: ## Build the transfer contract
+all: ## Build the stake contract
 	@cargo build --release
 
 help: ## Display this help screen
@@ -12,17 +12,17 @@ check: wasm ## Run the Rust check on the project features
 	@cargo check --target wasm32-unknown-unknown
 	@cargo check
 
-test: wasm ## Perform the contract tests defined in the host module
+test: wasm ## Perform the contract tests defined in the host contract
 	@cargo test --release
 
-wasm: ## Build the WASM files
+wasm: ## Generate the optimized WASM for the contract given
 	@RUSTFLAGS="$(RUSTFLAGS) --remap-path-prefix $(HOME)= -C link-args=-zstack-size=65536" \
 	CARGO_TARGET_DIR=$(TARGET_DIR) \
-	cargo +dusk build \
-		--release \
-		--color=always \
-		-Z build-std=core,alloc \
-		--target wasm64-unknown-unknown
+    	cargo +dusk build \
+    		--release \
+    		--color=always \
+			-Z build-std=core,alloc \
+    		--target wasm32-unknown-unknown
 			
 clippy: ## Run clippy
 	@cargo +dusk clippy --all-features --release -- -D warnings

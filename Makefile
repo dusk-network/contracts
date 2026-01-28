@@ -1,4 +1,4 @@
-SUBDIRS := alice bob charlie transfer stake host_fn
+SUBDIRS := contracts/alice contracts/bob contracts/charlie contracts/transfer contracts/stake contracts/host_fn
 
 all: setup-compiler $(SUBDIRS) ## Build all the contracts
 
