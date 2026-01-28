@@ -29,3 +29,25 @@ ff = { version = "0.13", default-features = false }
 rand = { version = "0.8.5", default-features = false }
 ringbuffer = "0.15"
 rkyv = { version = "0.7.39", default-features = false }
+
+[profile.dev.build-override]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+codegen-units = 16
+
+[profile.release.build-override]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+codegen-units = 16
+
+[profile.release.package.stake-contract]
+overflow-checks = true
+
+[profile.release.package.transfer-contract]
+overflow-checks = true
