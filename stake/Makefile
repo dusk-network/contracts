@@ -1,4 +1,4 @@
-TARGET_DIR:="../../target/dusk"
+TARGET_DIR:="../target/dusk"
 
 all: ## Build the stake contract
 	@cargo build --release

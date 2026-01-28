@@ -463,7 +463,7 @@ fn instantiate(vm: &mut VM, moonlight_pk: &BlsPublicKey) -> Session {
     // deploy transfer-contract
     const OWNER: [u8; 32] = [0; 32];
     let transfer_bytecode = include_bytes!(
-        "../../../target/dusk/wasm64-unknown-unknown/release/transfer_contract.wasm"
+        "../../target/dusk/wasm64-unknown-unknown/release/transfer_contract.wasm"
     );
     session
         .deploy(
@@ -477,7 +477,7 @@ fn instantiate(vm: &mut VM, moonlight_pk: &BlsPublicKey) -> Session {
 
     // deploy stake-contract
     let stake_bytecode = include_bytes!(
-        "../../../target/dusk/wasm32-unknown-unknown/release/stake_contract.wasm"
+        "../../target/dusk/wasm32-unknown-unknown/release/stake_contract.wasm"
     );
     session
         .deploy(

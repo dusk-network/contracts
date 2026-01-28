@@ -31,7 +31,7 @@ pub fn instantiate<Rng: RngCore + CryptoRng>(
 
     // deploy transfer-contract
     let transfer_bytecode = include_bytes!(
-        "../../../../target/dusk/wasm64-unknown-unknown/release/transfer_contract.wasm"
+        "../../../target/dusk/wasm64-unknown-unknown/release/transfer_contract.wasm"
     );
     session
         .deploy(
@@ -45,7 +45,7 @@ pub fn instantiate<Rng: RngCore + CryptoRng>(
 
     // deploy stake-contract
     let stake_bytecode = include_bytes!(
-        "../../../../target/dusk/wasm32-unknown-unknown/release/stake_contract.wasm"
+        "../../../target/dusk/wasm32-unknown-unknown/release/stake_contract.wasm"
     );
     session
         .deploy(
