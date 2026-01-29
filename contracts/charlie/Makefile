@@ -1,7 +1,10 @@
+TARGET_DIR ?= ../../target
+
 all: wasm clippy
 
 wasm: ## Generate the optimized WASM for the contract given
 	@RUSTFLAGS="$(RUSTFLAGS) --remap-path-prefix $(HOME)= -C link-args=-zstack-size=65536" \
+	CARGO_TARGET_DIR=$(TARGET_DIR) \
     	cargo build \
     		--release \
     		--color=always \

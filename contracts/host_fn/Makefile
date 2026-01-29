@@ -1,4 +1,5 @@
-TARGET_DIR:="../../target/dusk"
+DUSK_TARGET_DIR ?= ../../target
+TARGET_DIR:="$(DUSK_TARGET_DIR)/dusk"
 
 all: wasm
 
