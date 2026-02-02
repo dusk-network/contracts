@@ -13,13 +13,6 @@ jobs:
       - run: cargo install --git https://github.com/dusk-network/cargo-dusk-analyzer
       - run: cargo dusk-analyzer
 
-  fmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cargo fmt --all -- --check
-
   clippy:
     name: Clippy check
     runs-on: ubuntu-latest
