@@ -14,7 +14,7 @@ on:
 jobs:
   build:
     name: Build and Store Binaries
-    runs-on: ubuntu-latest
+    runs-on: core
     permissions:
       contents: write
       pull-requests: write
