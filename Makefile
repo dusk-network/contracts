@@ -7,9 +7,11 @@ help: ## Display this help screen
 		-E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-test: wasm $(SUBDIRS) ## Run all the tests in the subfolder
+test: wasm ## Run all the tests in the subfolder
+	$(MAKE) $(SUBDIRS) MAKECMDGOALS=test
 
-wasm: setup-compiler $(SUBDIRS) ## Generate the WASM for all the contracts
+wasm: setup-compiler ## Generate the WASM for all the contracts
+	$(MAKE) $(SUBDIRS) MAKECMDGOALS=wasm
 
 clippy: $(SUBDIRS) ## Run clippy
 
