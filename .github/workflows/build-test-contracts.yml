@@ -14,15 +14,12 @@ on:
 jobs:
   build:
     name: Build and Store Binaries
-    runs-on: core
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Build test contracts
         run: |
@@ -32,7 +29,7 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.BUILD_TEST_CONTRACTS_TOKEN }}
           commit-message: "chore: update test contract binaries"
           branch: update-test-contract-binaries
           delete-branch: true

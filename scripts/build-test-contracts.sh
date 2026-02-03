@@ -27,7 +27,7 @@ for contract in "${CONTRACTS[@]}"; do
   echo "✓ $contract.wasm built successfully"
   
   # Clean up target directory
-  rm -rf "$TARGET_DIR"
+  rm -rf "$TARGET_DIR" 2>/dev/null || true
 done
 
 echo "All test contracts built successfully!"
