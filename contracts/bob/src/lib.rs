@@ -9,9 +9,11 @@
 
 extern crate alloc;
 
+#[cfg(target_family = "wasm")]
 use dusk_core::abi;
 
 mod state;
+#[cfg(target_family = "wasm")]
 use state::Bob;
 
 #[cfg(target_family = "wasm")]
