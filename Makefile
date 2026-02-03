@@ -13,8 +13,13 @@ test: wasm ## Run all the tests in the subfolder
 wasm: setup-compiler ## Generate the WASM for all the contracts
 	$(MAKE) $(SUBDIRS) MAKECMDGOALS=wasm
 
-clippy: $(SUBDIRS) ## Run clippy
+clippy: setup-compiler ## Run clippy
+	$(MAKE) $(SUBDIRS) MAKECMDGOALS=clippy
 
+keys: ## Create the keys for the circuits
+	./scripts/download-rusk.sh
+	./target/rusk/rusk recovery keys
+	
 COMPILER_VERSION=v0.3.0-rc.1
 setup-compiler: ## Setup the Dusk Contract Compiler
 	@./scripts/setup-compiler.sh $(COMPILER_VERSION)

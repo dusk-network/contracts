@@ -18,11 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo clippy --all-features -- -D warnings
+      - run: make keys
+      - run: make clippy
 
   test:
     name: Run Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: make keys
       - run: make test
