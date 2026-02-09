@@ -5,10 +5,10 @@ on:
     branches:
       - main
     paths:
-      - 'contracts/alice/**'
-      - 'contracts/bob/**'
-      - 'contracts/charlie/**'
-      - 'contracts/host_fn/**'
+      - 'tests/alice/**'
+      - 'tests/bob/**'
+      - 'tests/charlie/**'
+      - 'tests/host_fn/**'
   workflow_dispatch:
 
 jobs:
