@@ -608,13 +608,6 @@ impl MultiSigV2 {
         let prev_admins =
             core::mem::replace(&mut self.admins, new_admins.clone());
 
-        // remove approvals from removed admins in pending ops
-        let removed_admins = prev_admins
-            .iter()
-            .filter(|pk| !new_admins.contains(pk))
-            .copied()
-            .collect::<Vec<_>>();
-
         // alert network of the changes to the state
         abi::emit(
             events::UpdateAuthority::TOPIC,
@@ -631,10 +624,10 @@ impl MultiSigV2 {
         // increment the admins nonce
         self.admin_nonce += 1;
 
-        let mut id_to_execute = vec![];
+        // remove approvals from removed admins in pending ops
         for (id, pending) in &mut self.proposals {
             let prev_approvals = pending.approvals.len();
-            pending.approvals.retain(|pk| !removed_admins.contains(pk));
+            pending.approvals.retain(|pk| self.admins.contains(pk));
 
             let new_approvals = pending.approvals.len();
             // We don't check if new_approvals > prev_approvals because that
@@ -642,13 +635,6 @@ impl MultiSigV2 {
             if new_approvals < prev_approvals {
                 abi::emit(events::MultisigOperation::UNAPPROVED, *id);
             }
-            if pending.is_ready() {
-                id_to_execute.push(*id);
-            }
-        }
-
-        for id in id_to_execute {
-            self.try_execute(&id);
         }
     }
 
