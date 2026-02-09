@@ -20,7 +20,7 @@ for contract in "${CONTRACTS[@]}"; do
     -v "$(pwd)/$TARGET_DIR":/target \
     --mount type=volume,source=dusk_registry_cache,target=/root/.cargo/registry \
     dusknode/dusk-verifiable-builds:0.2.0 \
-    --manifest-path "contracts/$contract/Cargo.toml" --target wasm32-unknown-unknown
+    --manifest-path "tests/$contract/Cargo.toml" --target wasm32-unknown-unknown
   
   # Copy the built wasm to bin directory
   cp "$TARGET_DIR/final-output/wasm32/$contract.wasm" bin/

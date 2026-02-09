@@ -1,14 +1,14 @@
 [workspace]
 members = [
     # Test contracts
-    "contracts/alice",
-    "contracts/bob",
-    "contracts/charlie",
-    "contracts/host_fn",
+    "tests/alice",
+    "tests/bob",
+    "tests/charlie",
+    "tests/host_fn",
 
     # Genesis protocol contracts
-    "contracts/stake",
-    "contracts/transfer",
+    "genesis/stake",
+    "genesis/transfer",
 ]
 
 resolver = "2"

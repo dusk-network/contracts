@@ -19,7 +19,7 @@ Other parts of the protocol are implemented largely in
 
 ## Genesis Protocol Contracts
 
-### [Transfer contract](contracts/transfer)
+### [Transfer contract](genesis/transfer)
 
 The transfer contract acts as the entrypoint for any transaction happening on the network and manages the native Dusk token.
 
@@ -27,7 +27,7 @@ The on-chain ContractId for the transfer contract is:
 
 `0100000000000000000000000000000000000000000000000000000000000000`
 
-### [Stake contract](contracts/stake)
+### [Stake contract](genesis/stake)
 
 The stake contract tracks public key stakes. It allows users to stake Dusk tokens subject to a maturation period before becoming eligible for consensus participation.
 
@@ -37,11 +37,11 @@ The on-chain ContractId for the stake contract is:
 
 ## Test Contracts
 
-- [`alice`](contracts/alice): exercises calls into the transfer contract
+- [`alice`](tests/alice): exercises calls into the transfer contract
   (deposit/withdraw/contract-to-contract) and staking via the relayer.
-- [`bob`](contracts/bob): example contract with an owner-restricted call and a
+- [`bob`](tests/bob): example contract with an owner-restricted call and a
   `ReceiveFromContract` handler.
-- [`charlie`](contracts/charlie): relayer contract that stakes/unstakes/withdraws
+- [`charlie`](tests/charlie): relayer contract that stakes/unstakes/withdraws
   on behalf of a contract via the transfer and stake contracts.
-- [`host_fn`](contracts/host_fn): wraps host functions (hashing, signature/proof
+- [`host_fn`](tests/host_fn): wraps host functions (hashing, signature/proof
   verification, chain metadata, etc.) for testing.
