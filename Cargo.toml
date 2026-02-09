@@ -6,7 +6,7 @@ members = [
     "contracts/charlie",
     "contracts/host_fn",
 
-    # Genesis contracts
+    # Genesis protocol contracts
     "contracts/stake",
     "contracts/transfer",
 ]
