@@ -15,9 +15,9 @@ use dusk_core::stake::{
 use dusk_core::transfer::data::ContractCall;
 use dusk_core::transfer::{Transaction, TRANSFER_CONTRACT};
 use dusk_vm::{execute, ContractData, Error, ExecutionConfig, Session, VM};
+use dusk_wallet_core::transaction::moonlight_stake_reward;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use dusk_wallet_core::transaction::moonlight_stake_reward;
 
 pub mod common;
 use crate::common::assert::{assert_moonlight, assert_reward_event};
