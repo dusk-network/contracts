@@ -13,11 +13,11 @@ use dusk_core::transfer::TRANSFER_CONTRACT;
 use dusk_vm::{
     execute, ContractData, Error as VMError, ExecutionConfig, Session, VM,
 };
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use dusk_wallet_core::transaction::{
     moonlight_stake, moonlight_stake_reward, moonlight_unstake,
 };
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 pub mod common;
 use crate::common::assert::*;

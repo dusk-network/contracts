@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dsherret/rust-toolchain-file@v1
-      - run: make keys
+      - run: cargo fmt
       - run: make clippy
 
   test:
