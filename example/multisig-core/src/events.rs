@@ -37,8 +37,8 @@ impl MultisigOperation {
     pub const APPROVED: &'static str = "op_approved";
     /// Event topic used when an operation is being executed.
     pub const EXECUTING: &'static str = "op_executing";
-    /// Event topic used when an operation has one or more approval removed.
-    pub const UNAPPROVED: &'static str = "op_unapproved";
+    /// Event topic used when a pending operation has been removed.
+    pub const REMOVED: &'static str = "op_removed";
 }
 
 /// Event emitted when the operation has been executed.

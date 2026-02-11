@@ -624,17 +624,13 @@ impl MultiSigV2 {
         // increment the admins nonce
         self.admin_nonce += 1;
 
-        // remove approvals from removed admins in pending ops
-        for (id, pending) in &mut self.proposals {
-            let prev_approvals = pending.approvals.len();
-            pending.approvals.retain(|pk| self.admins.contains(pk));
+        // Remove all the pending proposals that are no more valid due to the
+        // change in the admin set. For each removed proposal, emit an
+        // event with the removed proposal id.
+        let removed = core::mem::take(&mut self.proposals);
 
-            let new_approvals = pending.approvals.len();
-            // We don't check if new_approvals > prev_approvals because that
-            // cannot happen when removing admins.
-            if new_approvals < prev_approvals {
-                abi::emit(events::MultisigOperation::UNAPPROVED, *id);
-            }
+        for id in removed.into_keys() {
+            abi::emit(events::MultisigOperation::REMOVED, id);
         }
     }
 
