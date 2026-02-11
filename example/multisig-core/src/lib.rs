@@ -85,8 +85,6 @@ pub struct Operation {
     pub approvals: Vec<PublicKey>,
     /// The block-height deadline after which this proposal expires.
     pub deadline: u64,
-    /// The required number of approvals to execute this operation.
-    pub threshold: u8,
 }
 
 impl Operation {
@@ -94,12 +92,6 @@ impl Operation {
     #[must_use]
     pub fn approved_by(&self, pk: &PublicKey) -> bool {
         self.approvals.contains(pk)
-    }
-
-    /// Returns `true` if the operation has enough approvals to be executed.
-    #[must_use]
-    pub fn is_ready(&self) -> bool {
-        self.approvals.len() >= self.threshold as usize
     }
 }
 

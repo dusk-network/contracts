@@ -432,7 +432,6 @@ impl MultiSigV2 {
                     target,
                     approvals,
                     deadline,
-                    threshold: self.approval_threshold,
                 };
 
                 self.proposals.insert(id, op);
@@ -471,14 +470,15 @@ impl MultiSigV2 {
             OperationStatus::Pending(pending) => pending,
         };
 
-        assert!(!pending.approved_by(&from), "Already approved");
+        if !pending.approved_by(&from) {
+            pending.approvals.push(from);
 
-        pending.approvals.push(from);
+            abi::emit(
+                events::MultisigOperation::APPROVED,
+                events::MultisigOperation { id, from },
+            );
+        }
 
-        abi::emit(
-            events::MultisigOperation::APPROVED,
-            events::MultisigOperation { id, from },
-        );
         self.try_execute(&id);
     }
 
@@ -497,7 +497,7 @@ impl MultiSigV2 {
             "Pending operation expired - maybe a bug?"
         );
 
-        if !pending.is_ready() {
+        if pending.approvals.len() < self.approval_threshold as usize {
             return;
         }
 
@@ -628,7 +628,7 @@ impl MultiSigV2 {
         // change in the admin set. For each removed proposal, emit an
         // event with the removed proposal id.
         let removed = core::mem::take(&mut self.proposals);
-
+        let _ = core::mem::take(&mut self.proposal_deadlines);
         for id in removed.into_keys() {
             abi::emit(events::MultisigOperation::REMOVED, id);
         }
