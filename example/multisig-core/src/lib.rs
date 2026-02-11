@@ -81,17 +81,17 @@ pub struct Target {
 pub struct Operation {
     /// The target call.
     pub target: Target,
-    /// The list of admins that approved this operation so far.
-    pub approvals: Vec<PublicKey>,
+    /// The list of admins that confirmed this operation so far.
+    pub confirmations: Vec<PublicKey>,
     /// The block-height deadline after which this proposal expires.
     pub deadline: u64,
 }
 
 impl Operation {
-    /// Returns `true` if the given public key has approved this operation.
+    /// Returns `true` if the given public key has confirmed this operation.
     #[must_use]
-    pub fn approved_by(&self, pk: &PublicKey) -> bool {
-        self.approvals.contains(pk)
+    pub fn confirmed_by(&self, pk: &PublicKey) -> bool {
+        self.confirmations.contains(pk)
     }
 }
 
@@ -107,8 +107,8 @@ pub struct InitArgs {
     pub admins: Vec<PublicKey>,
     /// Required number of signatures to approve an admin operation.
     pub admin_threshold: u8,
-    /// Required number of signatures to execute a pending proposal.
-    pub approval_threshold: u8,
+    /// Required number of confirmations to execute a pending proposal.
+    pub confirmation_threshold: u8,
     /// Proposal TTL in blocks.
     pub proposal_ttl: u64,
     /// Replay window in blocks.
@@ -124,7 +124,7 @@ pub struct SetAuthority {
     pub chain_id: u8,
     /// List of new admin keys.
     pub new_admins: Vec<PublicKey>,
-    /// Required number of signatures to execute a pending proposal.
+    /// Required number of confirmations to execute a pending proposal.
     pub new_threshold: u8,
     /// Required number of signatures to approve an admin operation.
     pub new_admin_threshold: u8,
@@ -141,7 +141,7 @@ impl SetAuthority {
     /// - the admin-nonce in be-bytes
     /// - the contract ID in bytes
     /// - the new admin threshold
-    /// - the new proposal threshold
+    /// - the new confirmation threshold
     /// - the serialized public-keys of the new admins.
     #[must_use]
     pub fn signature_message(

@@ -15,8 +15,8 @@ use dusk_core::signatures::bls::PublicKey;
 
 use super::OpId;
 
-/// Event emitted when an operation is proposed, approved, unapproved or ready
-/// to be executed.
+/// Event emitted when an operation is proposed, confirmed, removed or
+/// executing.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize,
 )]
@@ -31,10 +31,10 @@ pub struct MultisigOperation {
 }
 
 impl MultisigOperation {
-    /// Event topic used when an operation is proposed for approval.
+    /// Event topic used when an operation is proposed for confirmation.
     pub const PROPOSED: &'static str = "op_proposed";
-    /// Event topic used when an operation is approved by an admin.
-    pub const APPROVED: &'static str = "op_approved";
+    /// Event topic used when an operation is confirmed by an admin.
+    pub const CONFIRMED: &'static str = "op_confirmed";
     /// Event topic used when an operation is being executed.
     pub const EXECUTING: &'static str = "op_executing";
     /// Event topic used when a pending operation has been removed.

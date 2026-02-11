@@ -29,15 +29,15 @@ const UNINITIALIZED_CONTRACT_ID: ContractId =
 /// # Overview
 ///
 /// `MultiSigV2` implements a multi-signature authorization layer for the Dusk
-/// network. It does not hold or move funds, but coordinates admin approvals for
-/// arbitrary operations and, once the required threshold is reached, executes
-/// the operation on the target contract.
+/// network. It does not hold or move funds, but coordinates admin confirmations
+/// for arbitrary operations and, once the required threshold is reached,
+/// executes the operation on the target contract.
 ///
 /// ## Core Logic
 /// - Manages a set of admin public keys and enforces a signature threshold
 ///   (e.g., 2-of-3, 3-of-5).
-/// - Admins can propose new operations or approve pending ones. A new proposal
-///   also counts as first approval.
+/// - Admins can propose new operations or confirm pending ones. A new proposal
+///   also counts as first confirmation.
 /// - Tracks pending proposals, each identified by a stable operation `id``
 ///   which is a hash of:
 ///   - multisig contract id
@@ -45,11 +45,11 @@ const UNINITIALIZED_CONTRACT_ID: ContractId =
 ///   - function name
 ///   - function arguments
 ///   - salt (for intentional duplication)
-/// - Duplicate proposals (for the same `id`) are counted as approvals for such
-///   operation.
-/// - Approvals are accumulated until reaching the target threshold.
-/// - As soon as the number of unique admin approvals for a proposal reaches the
-///   threshold, the target call is executed automatically.
+/// - Duplicate proposals (for the same `id`) are counted as confirmations for
+///   such operation.
+/// - Confirmations are accumulated until reaching the target threshold.
+/// - As soon as the number of unique admin confirmations for a proposal reaches
+///   the threshold, the target call is executed automatically.
 /// - After execution, a tombstone is recorded for `replay_window_blocks` to
 ///   prevent accidental duplicate proposals.
 /// - Proposals have a TTL (time-to-live) in blocks; expired proposals can be
@@ -63,7 +63,7 @@ const UNINITIALIZED_CONTRACT_ID: ContractId =
 ///   a target contract that must explicitly trust this multisig.
 /// - All interactions require a public (Moonlight) transaction and a direct
 ///   call from a registered admin.
-/// - Expiration prevents stale approvals from being kept in the state.
+/// - Expiration prevents stale confirmations from being kept in the state.
 /// - Tombstoning executed operations prevents accidental duplicate proposals.
 /// - Protection from replay attacks is ensured by enforcing the use of public
 ///   transactions (which include a signed nonce).
@@ -83,7 +83,7 @@ pub struct MultiSigV2 {
     admin_nonce: u64,
 
     /// Threshold to use for new proposals.
-    approval_threshold: u8,
+    confirmation_threshold: u8,
 
     /// Threshold for admin operations.
     admin_threshold: u8,
@@ -134,7 +134,7 @@ impl MultiSigV2 {
             admins: Vec::new(),
             admin_nonce: 0,
             admin_threshold: 0,
-            approval_threshold: 0,
+            confirmation_threshold: 0,
             proposal_ttl: 0,
             tombstone_ttl: 0,
             proposals: BTreeMap::new(),
@@ -153,8 +153,8 @@ impl MultiSigV2 {
     /// # Parameters
     /// - `admins`: List of admin public keys.
     /// - `admin_threshold`: Threshold for admin operations.
-    /// - `approval_threshold`: Required number of signatures to execute a
-    ///   pending operation.
+    /// - `confirmation_threshold`: Required number of confirmations to execute
+    ///   a pending operation.
     /// - `proposal_ttl`: Number of blocks a proposal remains valid.
     /// - `tombstone_ttl`: Number of blocks to prevent accidental duplication
     ///   after execution.
@@ -168,7 +168,7 @@ impl MultiSigV2 {
         let InitArgs {
             admins,
             admin_threshold,
-            approval_threshold,
+            confirmation_threshold,
             proposal_ttl,
             tombstone_ttl,
         } = init;
@@ -178,14 +178,17 @@ impl MultiSigV2 {
 
         Self::check_admins(&admins);
 
-        assert_ne!(approval_threshold, 0, "Cannot set threshold to zero");
+        assert_ne!(
+            confirmation_threshold, 0,
+            "Cannot set confirmation_threshold to zero"
+        );
         assert_ne!(admin_threshold, 0, "Cannot set admin_threshold to zero");
         assert_ne!(proposal_ttl, 0, "Cannot set proposal_ttl to zero");
         assert_ne!(tombstone_ttl, 0, "Cannot set tombstone_ttl to zero");
 
         assert!(
-            (approval_threshold as usize) <= admins.len(),
-            "Threshold cannot be larger than admin count"
+            (confirmation_threshold as usize) <= admins.len(),
+            "Confirmation threshold cannot be larger than admin count"
         );
 
         self.this_address = abi::self_id();
@@ -195,7 +198,7 @@ impl MultiSigV2 {
         );
 
         self.admins = admins;
-        self.approval_threshold = approval_threshold;
+        self.confirmation_threshold = confirmation_threshold;
         self.proposal_ttl = proposal_ttl;
         self.tombstone_ttl = tombstone_ttl;
     }
@@ -211,8 +214,8 @@ impl MultiSigV2 {
 
     /// Returns the threshold for operation proposals.
     #[must_use]
-    pub fn approval_threshold(&self) -> u8 {
-        self.approval_threshold
+    pub fn confirmation_threshold(&self) -> u8 {
+        self.confirmation_threshold
     }
 
     /// Returns the threshold for admin operations.
@@ -373,7 +376,7 @@ impl MultiSigV2 {
         }
     }
 
-    /// Retrieve the status of an operation to approve.
+    /// Retrieve the status of an operation to confirm.
     ///
     /// # Returns
     /// - `OperationStatus::Pending(&mut Operation)` if the operation is
@@ -381,7 +384,7 @@ impl MultiSigV2 {
     /// - `OperationStatus::Executed` if the operation has been executed.
     /// - `OperationStatus::Expired` if the operation has expired.
     /// - `OperationStatus::Unknown` if the operation is not found.
-    fn get_operation_to_approve(&mut self, id: &OpId) -> OperationStatus {
+    fn get_operation_to_confirm(&mut self, id: &OpId) -> OperationStatus {
         match self.proposals.get_mut(id) {
             None => {
                 if self.tombstones.contains_key(id) {
@@ -405,13 +408,13 @@ impl MultiSigV2 {
     /// Semantics:
     /// - direct public admin call required
     /// - if `id` is tombstoned (recently executed) => panic
-    /// - if `id` is pending => merge approvals (idempotent)
+    /// - if `id` is pending => merge confirmation (idempotent)
     /// - else create pending with deadline = now + `proposal_ttl_blocks`
     /// - auto-exec when threshold is reached
     pub fn propose(&mut self, target: Target) {
         let from = self.get_direct_admin();
 
-        assert!(self.approval_threshold > 0, "Threshold not configured");
+        assert!(self.confirmation_threshold > 0, "Threshold not configured");
         assert!(self.proposal_ttl > 0, "TTL not configured");
         assert!(self.tombstone_ttl > 0, "Replay window not configured");
 
@@ -420,17 +423,17 @@ impl MultiSigV2 {
 
         let id = Self::compute_id(&target);
 
-        let topic = match self.get_operation_to_approve(&id) {
+        let topic = match self.get_operation_to_confirm(&id) {
             OperationStatus::Executed | OperationStatus::Expired => return, /* noop */
             OperationStatus::Unknown => {
                 let deadline = abi::block_height()
                     .checked_add(self.proposal_ttl)
                     .expect("Adding ttl should not overflow");
-                let approvals = vec![from];
+                let confirmations = vec![from];
 
                 let op = Operation {
                     target,
-                    approvals,
+                    confirmations,
                     deadline,
                 };
 
@@ -442,9 +445,9 @@ impl MultiSigV2 {
                 events::MultisigOperation::PROPOSED
             }
             OperationStatus::Pending(pending) => {
-                assert!(!pending.approved_by(&from), "Already approved");
-                pending.approvals.push(from);
-                events::MultisigOperation::APPROVED
+                assert!(!pending.confirmed_by(&from), "Already confirmed");
+                pending.confirmations.push(from);
+                events::MultisigOperation::CONFIRMED
             }
         };
         abi::emit(topic, events::MultisigOperation { id, from });
@@ -452,29 +455,29 @@ impl MultiSigV2 {
         self.try_execute(&id);
     }
 
-    /// Approve an existing proposal.
+    /// Confirm an existing proposal.
     ///
     /// Semantics:
     /// - panic if `id` does not exist
-    /// - idempotent noop if already approved or expired
+    /// - idempotent noop if already confirmed or expired
     /// - auto-exec when threshold is reached
-    pub fn approve(&mut self, id: OpId) {
+    pub fn confirm(&mut self, id: OpId) {
         let from = self.get_direct_admin();
 
         self.prune_tombstones();
         self.prune_proposals();
 
-        let pending = match self.get_operation_to_approve(&id) {
+        let pending = match self.get_operation_to_confirm(&id) {
             OperationStatus::Executed | OperationStatus::Expired => return, /* noop */
             OperationStatus::Unknown => panic!("Operation not found"),
             OperationStatus::Pending(pending) => pending,
         };
 
-        if !pending.approved_by(&from) {
-            pending.approvals.push(from);
+        if !pending.confirmed_by(&from) {
+            pending.confirmations.push(from);
 
             abi::emit(
-                events::MultisigOperation::APPROVED,
+                events::MultisigOperation::CONFIRMED,
                 events::MultisigOperation { id, from },
             );
         }
@@ -497,7 +500,7 @@ impl MultiSigV2 {
             "Pending operation expired - maybe a bug?"
         );
 
-        if pending.approvals.len() < self.approval_threshold as usize {
+        if pending.confirmations.len() < self.confirmation_threshold as usize {
             return;
         }
 
@@ -527,7 +530,7 @@ impl MultiSigV2 {
     }
 }
 
-// Methods that need the admins' approval.
+// Methods that need the admins' operations.
 impl MultiSigV2 {
     /// Validates a new set of admin public keys.
     ///
@@ -582,10 +585,13 @@ impl MultiSigV2 {
             error::THRESHOLD_EXCEEDS_ADMINS
         );
 
-        assert_ne!(new_threshold, 0, "Cannot set threshold to zero");
+        assert_ne!(
+            new_threshold, 0,
+            "Cannot set confirmation threshold to zero"
+        );
         assert_ne!(
             new_admin_threshold, 0,
-            "Cannot set admin_threshold to zero"
+            "Cannot set admin threshold to zero"
         );
 
         // check the signature
@@ -602,7 +608,7 @@ impl MultiSigV2 {
         let prev_admin_threshold =
             core::mem::replace(&mut self.admin_threshold, new_admin_threshold);
         let prev_threshold =
-            core::mem::replace(&mut self.approval_threshold, new_threshold);
+            core::mem::replace(&mut self.confirmation_threshold, new_threshold);
 
         // update the admins to the new set
         let prev_admins =

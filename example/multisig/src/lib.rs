@@ -44,8 +44,8 @@ mod wasm {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn approve(arg_len: u32) -> u32 {
-        abi::wrap_call(arg_len, |args| STATE.approve(args))
+    unsafe extern "C" fn confirm(arg_len: u32) -> u32 {
+        abi::wrap_call(arg_len, |args| STATE.confirm(args))
     }
 
     /*
@@ -68,8 +68,8 @@ mod wasm {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn approval_threshold(arg_len: u32) -> u32 {
-        abi::wrap_call(arg_len, |(): ()| STATE.approval_threshold())
+    unsafe extern "C" fn confirmation_threshold(arg_len: u32) -> u32 {
+        abi::wrap_call(arg_len, |(): ()| STATE.confirmation_threshold())
     }
 
     #[no_mangle]
