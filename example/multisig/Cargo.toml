@@ -8,3 +8,11 @@ multisig-core = { path = "../multisig-core" }
 
 [lib]
 crate-type = ["cdylib"]
+
+[dev-dependencies]
+dusk-rusk-test = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "fs", "macros"] }
+rand = { workspace = true, default-features = false }
+tracing = { workspace = true }
+dusk-core = { workspace = true }
+hex = { workspace = true }
