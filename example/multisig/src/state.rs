@@ -622,6 +622,9 @@ impl MultiSigV2 {
         let prev_admins =
             core::mem::replace(&mut self.admins, new_admins.clone());
 
+        let removed_admin =
+            prev_admins.iter().any(|prev| !new_admins.contains(prev));
+
         // alert network of the changes to the state
         abi::emit(
             events::UpdateAuthority::TOPIC,
@@ -638,13 +641,18 @@ impl MultiSigV2 {
         // increment the admins nonce
         self.admin_nonce += 1;
 
-        // Remove all the pending proposals that are no more valid due to the
-        // change in the admin set. For each removed proposal, emit an
-        // event with the removed proposal id.
-        let removed = core::mem::take(&mut self.proposals);
-        let _ = core::mem::take(&mut self.proposal_deadlines);
-        for id in removed.into_keys() {
-            abi::emit(events::MultisigOperation::REMOVED, id);
+        let op_threshold_changed = prev_threshold != new_threshold;
+
+        // We assume removing an admin or change the execution threshold
+        // invalidates all existing proposals.
+        if removed_admin || op_threshold_changed {
+            // For each removed proposal, emit an event with the removed
+            // proposal id.
+            let removed = core::mem::take(&mut self.proposals);
+            let _ = core::mem::take(&mut self.proposal_deadlines);
+            for id in removed.into_keys() {
+                abi::emit(events::MultisigOperation::REMOVED, id);
+            }
         }
     }
 
