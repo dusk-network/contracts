@@ -11,7 +11,7 @@
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(clippy::pedantic)]
-#![deny(unused_crate_dependencies)]
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 #[cfg(target_family = "wasm")]
 #[macro_use]
@@ -21,6 +21,7 @@ extern crate alloc;
 pub(crate) mod state;
 
 #[cfg(target_family = "wasm")]
+#[allow(static_mut_refs)]
 mod wasm {
 
     use dusk_core::abi;
