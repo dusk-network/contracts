@@ -37,7 +37,7 @@ impl MultisigOperation {
     pub const CONFIRMED: &'static str = "op_confirmed";
     /// Event topic used when an operation is being executed.
     pub const EXECUTING: &'static str = "op_executing";
-    /// Event topic used when a pending operation has been removed.
+    /// Event topic used when a pending operation is removed.
     pub const REMOVED: &'static str = "op_removed";
 }
 

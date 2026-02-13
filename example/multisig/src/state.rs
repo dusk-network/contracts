@@ -403,14 +403,22 @@ impl MultiSigV2 {
         }
     }
 
-    /// Create or merge a proposal, keyed by `id`.
+    /// Propose an operation on a target contract.
+    ///
+    /// If no such operation exists, it creates a new pending one.
+    /// If the operation already exists, this call confirms it.
+    ///
+    /// The current design allows this function to be used both in
+    /// a master-slave approach, in which one admin proposes an operation
+    /// and the others confirm it, and a concurrent approach, in which all
+    /// admins (or a large subset) propose the operation at the same time.
     ///
     /// Semantics:
     /// - direct public admin call required
-    /// - if `id` is tombstoned (recently executed) => panic
-    /// - if `id` is pending => merge confirmation (idempotent)
-    /// - else create pending with deadline = now + `proposal_ttl_blocks`
-    /// - auto-exec when threshold is reached
+    /// - if `id` is tombstoned (recently executed) => noop
+    /// - if `id` is pending => add confirmation (idempotent)
+    /// - else create pending operation with `deadline = now + proposal_ttl`
+    /// - automatically execute operation when threshold is reached
     pub fn propose(&mut self, target: Target) {
         let from = self.get_direct_admin();
 
@@ -459,8 +467,8 @@ impl MultiSigV2 {
     ///
     /// Semantics:
     /// - panic if `id` does not exist
-    /// - idempotent noop if already confirmed or expired
-    /// - auto-exec when threshold is reached
+    /// - noop if already confirmed or expired
+    /// - automatically execute operation when threshold is reached
     pub fn confirm(&mut self, id: OpId) {
         let from = self.get_direct_admin();
 
