@@ -142,7 +142,11 @@ pub fn on_new_block(&mut self)
 > Can only be called from outside the VM
 > Note: The underlying wrapped function has a different name than the exposed state method, hence the name difference.
 
-**Description**: Override the stake config with a new one.
+**Description**: Override the stake config with a new one (for example with new `warnings` or `minimum_stake` values) without redeploying the stake contract.
+
+**How it is used in practice**:
+- This is a host-level management hook.
+- It is intended for coordinated protocol upgrades: a node release introduces a deterministic `set_config` call at a fixed activation height.
 
 ```rust
 pub fn configure(&mut self, config: StakeConfig)
