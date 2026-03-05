@@ -147,6 +147,7 @@ pub fn on_new_block(&mut self)
 **How it is used in practice**:
 - This is a host-level management hook.
 - It is intended for coordinated protocol upgrades: a node release introduces a deterministic `set_config` call at a fixed activation height.
+- If `minimum_stake` is changed, consensus eligibility rules must be updated in lockstep to use the configured minimum stake; otherwise contract and consensus thresholds can diverge.
 
 ```rust
 pub fn configure(&mut self, config: StakeConfig)
