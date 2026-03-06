@@ -111,6 +111,13 @@ unsafe fn prev_state_changes(arg_len: u32) -> u32 {
 }
 
 // "Management" transactions
+//
+// NOTE: `set_config`, `insert_stake` and `set_burnt_amount` are intentionally
+// consensus-privileged host hooks. They can only be called from outside the VM
+// (`abi::caller() == None`), not by user transactions or inter-contract calls.
+// Any post-genesis use must be introduced by deterministic node logic (for
+// example at a fixed activation height), so all validators execute it
+// consistently.
 
 #[no_mangle]
 unsafe fn before_state_transition(arg_len: u32) -> u32 {
