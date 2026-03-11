@@ -651,7 +651,8 @@ impl TransferState {
     /// the contract. The note produced will be refunded to the address present
     /// in the fee structure.
     ///
-    /// This function guarantees that it will not panic.
+    /// This function is expected to succeed for valid transactions, but
+    /// callers must not rely on it being infallible.
     pub fn refund(&mut self, gas_spent: u64) {
         let ongoing = transitory::take_ongoing();
 
