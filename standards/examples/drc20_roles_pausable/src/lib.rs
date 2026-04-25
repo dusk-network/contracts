@@ -133,6 +133,7 @@ mod drc20_roles_pausable {
             }
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn init(&mut self, args: Init) {
             if args.admin.is_zero() {
                 panic!("{}", error::ZERO_PRINCIPAL);
@@ -230,6 +231,7 @@ mod drc20_roles_pausable {
             self.access.has_role(args.role, args.account)
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn transfer(&mut self, args: TransferCall) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -251,12 +253,14 @@ mod drc20_roles_pausable {
             Self::emit_transfer(event);
         }
 
+        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn approve(&mut self, args: ApproveCall) {
             let caller = caller();
             let event = self.token.approve(caller, args);
             Self::emit_approval(event);
         }
 
+        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn approve_by_authorization(&mut self, args: SignedApproveCall) {
             let principal = self.authorizations.authorize_signed_action(
                 &args.authorization,
@@ -281,18 +285,21 @@ mod drc20_roles_pausable {
             Self::emit_approval(event);
         }
 
+        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn increase_allowance(&mut self, args: IncreaseAllowanceCall) {
             let caller = caller();
             let event = self.token.increase_allowance(caller, args);
             Self::emit_approval(event);
         }
 
+        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn decrease_allowance(&mut self, args: DecreaseAllowanceCall) {
             let caller = caller();
             let event = self.token.decrease_allowance(caller, args);
             Self::emit_approval(event);
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn transfer_from(&mut self, args: TransferFromCall) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -314,6 +321,7 @@ mod drc20_roles_pausable {
             Self::emit_transfer(event);
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn mint(&mut self, args: MintCall) {
             self.pausable.assert_not_paused();
             self.authorize_role_action(
@@ -335,6 +343,7 @@ mod drc20_roles_pausable {
             Self::emit_transfer(event);
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn burn(&mut self, amount: u64) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -344,6 +353,7 @@ mod drc20_roles_pausable {
             Self::emit_transfer(event);
         }
 
+        #[contract(no_event)]
         pub fn pause(&mut self, args: AdminCall) {
             self.authorize_role_action(
                 PAUSER_ROLE,
@@ -358,6 +368,7 @@ mod drc20_roles_pausable {
             self.pausable.pause();
         }
 
+        #[contract(no_event)]
         pub fn unpause(&mut self, args: AdminCall) {
             self.authorize_role_action(
                 PAUSER_ROLE,
@@ -376,6 +387,7 @@ mod drc20_roles_pausable {
             self.pausable.paused()
         }
 
+        #[contract(no_event)]
         pub fn grant_role(&mut self, args: RoleCall) {
             let admin = self.access.get_role_admin(args.role);
             let caller = self.authorize_role_action(
@@ -391,6 +403,7 @@ mod drc20_roles_pausable {
             self.access.grant_role(caller, args.role, args.account);
         }
 
+        #[contract(no_event)]
         pub fn revoke_role(&mut self, args: RoleCall) {
             let admin = self.access.get_role_admin(args.role);
             let caller = self.authorize_role_action(

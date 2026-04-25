@@ -70,6 +70,7 @@ mod authorization_counter {
             }
         }
 
+        #[contract(no_event)]
         pub fn init(&mut self) {
             if self.initialized {
                 panic!("AuthorizationCounter: already initialized");
@@ -89,6 +90,7 @@ mod authorization_counter {
             self.authorizations.nonce(query.principal, query.domain)
         }
 
+        #[contract(no_event)]
         pub fn set_value_by_moonlight(&mut self, args: SetValueByMoonlight) {
             self.assert_action(
                 args.authorization.action.contract,
@@ -103,6 +105,7 @@ mod authorization_counter {
             self.set_value(principal, args.amount);
         }
 
+        #[contract(no_event)]
         pub fn set_value_by_phoenix(&mut self, args: SetValueByPhoenix) {
             self.assert_action(
                 args.authorization.action.contract,

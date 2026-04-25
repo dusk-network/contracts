@@ -126,6 +126,7 @@ mod drc721_collection {
             }
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc721Transfer)])]
         pub fn init(&mut self, args: Init) {
             if args.owner.is_zero() {
                 panic!("{}", error::ZERO_PRINCIPAL);
@@ -210,16 +211,19 @@ mod drc721_collection {
             self.royalties.royalty_info(args.token_id, args.sale_price)
         }
 
+        #[contract(emits = [(APPROVAL_TOPIC, Drc721Approval)])]
         pub fn approve(&mut self, args: ApproveCall) {
             let event = self.token.approve(caller(), args);
             Self::emit_approval(event);
         }
 
+        #[contract(emits = [(APPROVAL_FOR_ALL_TOPIC, Drc721ApprovalForAll)])]
         pub fn set_approval_for_all(&mut self, args: SetApprovalForAllCall) {
             let event = self.token.set_approval_for_all(caller(), args);
             Self::emit_approval_for_all(event);
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc721Transfer)])]
         pub fn transfer_from(&mut self, args: TransferFromCall) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -231,6 +235,7 @@ mod drc721_collection {
             Self::emit_transfer(event);
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc721Transfer)])]
         pub fn mint(&mut self, args: MintCall) {
             self.pausable.assert_not_paused();
             self.authorize_owner_action(
@@ -246,12 +251,14 @@ mod drc721_collection {
             Self::emit_transfer(event);
         }
 
+        #[contract(emits = [(TRANSFER_TOPIC, Drc721Transfer)])]
         pub fn burn(&mut self, token_id: u64) {
             self.pausable.assert_not_paused();
             let event = self.token.burn(caller(), token_id);
             Self::emit_transfer(event);
         }
 
+        #[contract(no_event)]
         pub fn pause(&mut self, args: AdminCall) {
             self.authorize_owner_action(
                 args.authorization.as_ref(),
@@ -265,6 +272,7 @@ mod drc721_collection {
             self.pausable.pause();
         }
 
+        #[contract(no_event)]
         pub fn unpause(&mut self, args: AdminCall) {
             self.authorize_owner_action(
                 args.authorization.as_ref(),
@@ -282,6 +290,7 @@ mod drc721_collection {
             self.pausable.paused()
         }
 
+        #[contract(no_event)]
         pub fn set_default_royalty(&mut self, args: SetDefaultRoyaltyCall) {
             self.authorize_owner_action(
                 args.authorization.as_ref(),
@@ -295,6 +304,7 @@ mod drc721_collection {
             self.royalties.set_default_royalty(args.info);
         }
 
+        #[contract(no_event)]
         pub fn clear_default_royalty(&mut self, args: AdminCall) {
             self.authorize_owner_action(
                 args.authorization.as_ref(),
@@ -308,6 +318,7 @@ mod drc721_collection {
             self.royalties.clear_default_royalty();
         }
 
+        #[contract(no_event)]
         pub fn set_token_royalty(&mut self, args: SetTokenRoyaltyCall) {
             self.authorize_owner_action(
                 args.authorization.as_ref(),
@@ -321,6 +332,7 @@ mod drc721_collection {
             self.royalties.set_token_royalty(args.token_id, args.info);
         }
 
+        #[contract(no_event)]
         pub fn clear_token_royalty(&mut self, args: ClearTokenRoyaltyCall) {
             self.authorize_owner_action(
                 args.authorization.as_ref(),
