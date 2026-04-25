@@ -1,6 +1,7 @@
 //! Access-control modules.
 
 pub mod access_control;
+pub mod events;
 pub mod ownable;
 pub mod owner_set;
 pub mod pausable;

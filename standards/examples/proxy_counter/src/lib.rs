@@ -21,6 +21,7 @@ pub const ACTIVATE_UPGRADE_ACTION: [u8; 32] = [34u8; 32];
 pub const CANCEL_UPGRADE_ACTION: [u8; 32] = [35u8; 32];
 pub const ROLLBACK_ACTION: [u8; 32] = [36u8; 32];
 pub const FINALIZE_ROLLBACK_ACTION: [u8; 32] = [37u8; 32];
+pub const VALUE_CHANGED_TOPIC: &str = "proxy_counter/value_changed";
 
 #[derive(
     Archive, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
@@ -58,6 +59,17 @@ pub struct AdminCall {
     pub authorization: Option<SignedAuthorization>,
 }
 
+#[derive(
+    Archive, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[archive_attr(derive(CheckBytes))]
+pub struct ValueChanged {
+    pub previous: u64,
+    pub value: u64,
+    pub sender: Option<Principal>,
+}
+
 #[dusk_forge::contract]
 mod proxy_counter {
     use alloc::vec::Vec;
@@ -77,10 +89,10 @@ mod proxy_counter {
     };
     use dusk_core::abi::{self, ContractId};
     use proxy_counter_types::{
-        AdminCall, Init, PrepareUpgrade, SetValue, ACTIVATE_UPGRADE_ACTION,
-        CANCEL_UPGRADE_ACTION, FINALIZE_ROLLBACK_ACTION,
-        PREPARE_UPGRADE_ACTION, PROXY_ADMIN_DOMAIN, ROLLBACK_ACTION,
-        SET_VALUE_ACTION,
+        AdminCall, Init, PrepareUpgrade, SetValue, ValueChanged,
+        ACTIVATE_UPGRADE_ACTION, CANCEL_UPGRADE_ACTION,
+        FINALIZE_ROLLBACK_ACTION, PREPARE_UPGRADE_ACTION, PROXY_ADMIN_DOMAIN,
+        ROLLBACK_ACTION, SET_VALUE_ACTION, VALUE_CHANGED_TOPIC,
     };
 
     const COUNTER_KEY: [u8; 32] = [7u8; 32];
@@ -131,15 +143,22 @@ mod proxy_counter {
             )
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(VALUE_CHANGED_TOPIC, ValueChanged)])]
         pub fn increment(&mut self) {
-            let next = self.value().checked_add(1).expect(error::OVERFLOW);
+            let previous = self.value();
+            let next = previous.checked_add(1).expect(error::OVERFLOW);
             self.write_value(next);
+            Self::emit_value_changed(
+                previous,
+                next,
+                CallContext::current().principal,
+            );
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(VALUE_CHANGED_TOPIC, ValueChanged)])]
         pub fn set_value(&mut self, args: SetValue) {
-            self.authorize_admin_action(
+            let previous = self.value();
+            let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -149,6 +168,7 @@ mod proxy_counter {
                 ),
             );
             self.write_value(args.value);
+            Self::emit_value_changed(previous, args.value, Some(caller));
         }
 
         #[contract(emits = [(UPGRADE_PREPARED_TOPIC, UpgradePrepared)])]
@@ -304,6 +324,21 @@ mod proxy_counter {
                 ROLLBACK_FINALIZED_TOPIC,
                 RollbackFinalized {
                     implementation: event.implementation,
+                },
+            );
+        }
+
+        fn emit_value_changed(
+            previous: u64,
+            value: u64,
+            sender: Option<Principal>,
+        ) {
+            abi::emit(
+                VALUE_CHANGED_TOPIC,
+                ValueChanged {
+                    previous,
+                    value,
+                    sender,
                 },
             );
         }

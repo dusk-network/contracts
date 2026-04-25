@@ -66,7 +66,9 @@ voting-unit checkpoint patterns. DRC721 includes enumerable queries, burnable,
 pausable, and default/token-specific royalty patterns. The reference pausable
 tokens pause all balance-changing operations: transfers, minting, and burning.
 Approvals remain available while paused. These remain composing contract choices
-rather than mandatory behavior baked into every token.
+rather than mandatory behavior baked into every token. Reference contracts emit
+typed pause/unpause, role grant/revoke, royalty change, transfer, approval, and
+proxy value/upgrade events instead of leaving policy mutations silent.
 
 Proxy support is expressed as an upgrade admin state machine and a namespaced
 state store. The example records the active implementation id, delay, migration

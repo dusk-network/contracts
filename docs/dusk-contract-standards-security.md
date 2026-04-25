@@ -42,6 +42,8 @@ is consumed.
 The reference pausable DRC20 and DRC721 contracts pause all balance-changing
 operations: transfers, minting, and burning. Approvals remain available while
 paused so accounts can prepare permissions without moving balances or ownership.
+Pause and unpause operations emit typed events, and role and royalty policy
+changes are also observable through typed events.
 
 ## Reentrancy and Call Stack
 

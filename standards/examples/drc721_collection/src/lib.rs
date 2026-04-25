@@ -84,6 +84,9 @@ mod drc721_collection {
         NFT_ADMIN_DOMAIN, PAUSE_ACTION, SET_DEFAULT_ROYALTY_ACTION,
         SET_TOKEN_ROYALTY_ACTION, UNPAUSE_ACTION,
     };
+    use dusk_contract_standards::access::events::{
+        Paused, Unpaused, PAUSED_TOPIC, UNPAUSED_TOPIC,
+    };
     use dusk_contract_standards::access::{Ownable, Pausable};
     use dusk_contract_standards::auth::{
         ActionEnvelope, AuthorizationManager, SignedAuthorization,
@@ -94,8 +97,11 @@ mod drc721_collection {
     use dusk_contract_standards::security::ReentrancyGuard;
     use dusk_contract_standards::token::drc721::events::{
         Approval as Drc721Approval, ApprovalForAll as Drc721ApprovalForAll,
-        Transfer as Drc721Transfer, APPROVAL_FOR_ALL_TOPIC, APPROVAL_TOPIC,
-        TRANSFER_TOPIC,
+        DefaultRoyaltyCleared, DefaultRoyaltySet, TokenRoyaltyCleared,
+        TokenRoyaltySet, Transfer as Drc721Transfer, APPROVAL_FOR_ALL_TOPIC,
+        APPROVAL_TOPIC, DEFAULT_ROYALTY_CLEARED_TOPIC,
+        DEFAULT_ROYALTY_SET_TOPIC, TOKEN_ROYALTY_CLEARED_TOPIC,
+        TOKEN_ROYALTY_SET_TOPIC, TRANSFER_TOPIC,
     };
     use dusk_contract_standards::token::drc721::{
         ApproveCall, BalanceOf, Drc721, GetApproved, IsApprovedForAll, OwnerOf,
@@ -258,9 +264,9 @@ mod drc721_collection {
             Self::emit_transfer(event);
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(PAUSED_TOPIC, Paused)])]
         pub fn pause(&mut self, args: AdminCall) {
-            self.authorize_owner_action(
+            let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -269,12 +275,14 @@ mod drc721_collection {
                     empty_payload_hash(b"drc721.pause"),
                 ),
             );
+            self.pausable.assert_not_paused();
             self.pausable.pause();
+            Self::emit_paused(caller);
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(UNPAUSED_TOPIC, Unpaused)])]
         pub fn unpause(&mut self, args: AdminCall) {
-            self.authorize_owner_action(
+            let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -283,16 +291,18 @@ mod drc721_collection {
                     empty_payload_hash(b"drc721.unpause"),
                 ),
             );
+            self.pausable.assert_paused();
             self.pausable.unpause();
+            Self::emit_unpaused(caller);
         }
 
         pub fn paused(&self) -> bool {
             self.pausable.paused()
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(DEFAULT_ROYALTY_SET_TOPIC, DefaultRoyaltySet)])]
         pub fn set_default_royalty(&mut self, args: SetDefaultRoyaltyCall) {
-            self.authorize_owner_action(
+            let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -302,11 +312,14 @@ mod drc721_collection {
                 ),
             );
             self.royalties.set_default_royalty(args.info);
+            Self::emit_default_royalty_set(caller, args.info);
         }
 
-        #[contract(no_event)]
+        #[contract(
+            emits = [(DEFAULT_ROYALTY_CLEARED_TOPIC, DefaultRoyaltyCleared)]
+        )]
         pub fn clear_default_royalty(&mut self, args: AdminCall) {
-            self.authorize_owner_action(
+            let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -316,11 +329,12 @@ mod drc721_collection {
                 ),
             );
             self.royalties.clear_default_royalty();
+            Self::emit_default_royalty_cleared(caller);
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(TOKEN_ROYALTY_SET_TOPIC, TokenRoyaltySet)])]
         pub fn set_token_royalty(&mut self, args: SetTokenRoyaltyCall) {
-            self.authorize_owner_action(
+            let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -330,11 +344,12 @@ mod drc721_collection {
                 ),
             );
             self.royalties.set_token_royalty(args.token_id, args.info);
+            Self::emit_token_royalty_set(caller, args.token_id, args.info);
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(TOKEN_ROYALTY_CLEARED_TOPIC, TokenRoyaltyCleared)])]
         pub fn clear_token_royalty(&mut self, args: ClearTokenRoyaltyCall) {
-            self.authorize_owner_action(
+            let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
                     abi::self_id(),
@@ -344,6 +359,7 @@ mod drc721_collection {
                 ),
             );
             self.royalties.clear_token_royalty(args.token_id);
+            Self::emit_token_royalty_cleared(caller, args.token_id);
         }
 
         fn authorize_owner_action(
@@ -390,6 +406,55 @@ mod drc721_collection {
                     operator: event.operator,
                     approved: event.approved,
                 },
+            );
+        }
+
+        fn emit_paused(account: Principal) {
+            abi::emit(PAUSED_TOPIC, Paused { account });
+        }
+
+        fn emit_unpaused(account: Principal) {
+            abi::emit(UNPAUSED_TOPIC, Unpaused { account });
+        }
+
+        fn emit_default_royalty_set(operator: Principal, info: RoyaltyInfo) {
+            abi::emit(
+                DEFAULT_ROYALTY_SET_TOPIC,
+                DefaultRoyaltySet {
+                    operator,
+                    receiver: info.receiver,
+                    basis_points: info.basis_points,
+                },
+            );
+        }
+
+        fn emit_default_royalty_cleared(operator: Principal) {
+            abi::emit(
+                DEFAULT_ROYALTY_CLEARED_TOPIC,
+                DefaultRoyaltyCleared { operator },
+            );
+        }
+
+        fn emit_token_royalty_set(
+            operator: Principal,
+            token_id: u64,
+            info: RoyaltyInfo,
+        ) {
+            abi::emit(
+                TOKEN_ROYALTY_SET_TOPIC,
+                TokenRoyaltySet {
+                    operator,
+                    token_id,
+                    receiver: info.receiver,
+                    basis_points: info.basis_points,
+                },
+            );
+        }
+
+        fn emit_token_royalty_cleared(operator: Principal, token_id: u64) {
+            abi::emit(
+                TOKEN_ROYALTY_CLEARED_TOPIC,
+                TokenRoyaltyCleared { operator, token_id },
             );
         }
     }

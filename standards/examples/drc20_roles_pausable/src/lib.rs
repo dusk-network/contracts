@@ -88,6 +88,10 @@ mod drc20_roles_pausable {
         SIGNED_APPROVE_ACTION, SIGNED_APPROVE_DOMAIN, TOKEN_ADMIN_DOMAIN,
         UNPAUSE_ACTION,
     };
+    use dusk_contract_standards::access::events::{
+        Paused, RoleGranted, RoleRevoked, Unpaused, PAUSED_TOPIC,
+        ROLE_GRANTED_TOPIC, ROLE_REVOKED_TOPIC, UNPAUSED_TOPIC,
+    };
     use dusk_contract_standards::access::{AccessControl, Pausable, Role};
     use dusk_contract_standards::auth::{
         ActionEnvelope, AuthorizationManager, SignedAuthorization,
@@ -353,9 +357,9 @@ mod drc20_roles_pausable {
             Self::emit_transfer(event);
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(PAUSED_TOPIC, Paused)])]
         pub fn pause(&mut self, args: AdminCall) {
-            self.authorize_role_action(
+            let caller = self.authorize_role_action(
                 PAUSER_ROLE,
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -365,12 +369,14 @@ mod drc20_roles_pausable {
                     empty_payload_hash(b"drc20.pause"),
                 ),
             );
+            self.pausable.assert_not_paused();
             self.pausable.pause();
+            Self::emit_paused(caller);
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(UNPAUSED_TOPIC, Unpaused)])]
         pub fn unpause(&mut self, args: AdminCall) {
-            self.authorize_role_action(
+            let caller = self.authorize_role_action(
                 PAUSER_ROLE,
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -380,14 +386,16 @@ mod drc20_roles_pausable {
                     empty_payload_hash(b"drc20.unpause"),
                 ),
             );
+            self.pausable.assert_paused();
             self.pausable.unpause();
+            Self::emit_unpaused(caller);
         }
 
         pub fn paused(&self) -> bool {
             self.pausable.paused()
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(ROLE_GRANTED_TOPIC, RoleGranted)])]
         pub fn grant_role(&mut self, args: RoleCall) {
             let admin = self.access.get_role_admin(args.role);
             let caller = self.authorize_role_action(
@@ -400,10 +408,14 @@ mod drc20_roles_pausable {
                     role_payload_hash(args.role, args.account),
                 ),
             );
+            let had_role = self.access.has_role(args.role, args.account);
             self.access.grant_role(caller, args.role, args.account);
+            if !had_role {
+                Self::emit_role_granted(args.role, args.account, caller);
+            }
         }
 
-        #[contract(no_event)]
+        #[contract(emits = [(ROLE_REVOKED_TOPIC, RoleRevoked)])]
         pub fn revoke_role(&mut self, args: RoleCall) {
             let admin = self.access.get_role_admin(args.role);
             let caller = self.authorize_role_action(
@@ -416,7 +428,11 @@ mod drc20_roles_pausable {
                     role_payload_hash(args.role, args.account),
                 ),
             );
+            let had_role = self.access.has_role(args.role, args.account);
             self.access.revoke_role(caller, args.role, args.account);
+            if had_role {
+                Self::emit_role_revoked(args.role, args.account, caller);
+            }
         }
 
         fn authorize_role_action(
@@ -453,6 +469,44 @@ mod drc20_roles_pausable {
                     owner: event.owner,
                     spender: event.spender,
                     amount: event.amount,
+                },
+            );
+        }
+
+        fn emit_paused(account: Principal) {
+            abi::emit(PAUSED_TOPIC, Paused { account });
+        }
+
+        fn emit_unpaused(account: Principal) {
+            abi::emit(UNPAUSED_TOPIC, Unpaused { account });
+        }
+
+        fn emit_role_granted(
+            role: Role,
+            account: Principal,
+            sender: Principal,
+        ) {
+            abi::emit(
+                ROLE_GRANTED_TOPIC,
+                RoleGranted {
+                    role,
+                    account,
+                    sender,
+                },
+            );
+        }
+
+        fn emit_role_revoked(
+            role: Role,
+            account: Principal,
+            sender: Principal,
+        ) {
+            abi::emit(
+                ROLE_REVOKED_TOPIC,
+                RoleRevoked {
+                    role,
+                    account,
+                    sender,
                 },
             );
         }
