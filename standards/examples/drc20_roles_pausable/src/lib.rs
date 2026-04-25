@@ -328,6 +328,12 @@ mod drc20_roles_pausable {
         #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn mint(&mut self, args: MintCall) {
             self.pausable.assert_not_paused();
+            if args.to.is_zero() {
+                panic!("{}", error::ZERO_PRINCIPAL);
+            }
+            if let Some(cap) = self.cap {
+                cap.assert_mint(self.token.total_supply(), args.amount);
+            }
             self.authorize_role_action(
                 MINTER_ROLE,
                 args.authorization.as_ref(),
@@ -338,9 +344,6 @@ mod drc20_roles_pausable {
                     mint_payload_hash(args.to, args.amount),
                 ),
             );
-            if let Some(cap) = self.cap {
-                cap.assert_mint(self.token.total_supply(), args.amount);
-            }
             let event = self.token.mint(args.to, args.amount);
             self.votes
                 .move_units(None, Some(event.to), event.amount, now());
@@ -359,6 +362,7 @@ mod drc20_roles_pausable {
 
         #[contract(emits = [(PAUSED_TOPIC, Paused)])]
         pub fn pause(&mut self, args: AdminCall) {
+            self.pausable.assert_not_paused();
             let caller = self.authorize_role_action(
                 PAUSER_ROLE,
                 args.authorization.as_ref(),
@@ -369,13 +373,13 @@ mod drc20_roles_pausable {
                     empty_payload_hash(b"drc20.pause"),
                 ),
             );
-            self.pausable.assert_not_paused();
             self.pausable.pause();
             Self::emit_paused(caller);
         }
 
         #[contract(emits = [(UNPAUSED_TOPIC, Unpaused)])]
         pub fn unpause(&mut self, args: AdminCall) {
+            self.pausable.assert_paused();
             let caller = self.authorize_role_action(
                 PAUSER_ROLE,
                 args.authorization.as_ref(),
@@ -386,7 +390,6 @@ mod drc20_roles_pausable {
                     empty_payload_hash(b"drc20.unpause"),
                 ),
             );
-            self.pausable.assert_paused();
             self.pausable.unpause();
             Self::emit_unpaused(caller);
         }
@@ -397,6 +400,9 @@ mod drc20_roles_pausable {
 
         #[contract(emits = [(ROLE_GRANTED_TOPIC, RoleGranted)])]
         pub fn grant_role(&mut self, args: RoleCall) {
+            if args.account.is_zero() {
+                panic!("{}", error::ZERO_PRINCIPAL);
+            }
             let admin = self.access.get_role_admin(args.role);
             let caller = self.authorize_role_action(
                 admin,

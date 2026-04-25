@@ -112,7 +112,7 @@ mod drc721_collection {
         RoyaltyInfo, RoyaltyQuery, RoyaltyQuote, RoyaltyRegistry,
         SetApprovalForAllCall, SignedApproveCall, SignedSetApprovalForAllCall,
         TokenByIndex, TokenOfOwnerByIndex, TokenUri, TokensOf,
-        TransferFromCall,
+        TransferFromCall, MAX_BASIS_POINTS,
     };
     use dusk_core::abi;
 
@@ -319,6 +319,9 @@ mod drc721_collection {
         #[contract(emits = [(TRANSFER_TOPIC, Drc721Transfer)])]
         pub fn mint(&mut self, args: MintCall) {
             self.pausable.assert_not_paused();
+            if args.to.is_zero() {
+                panic!("{}", error::ZERO_PRINCIPAL);
+            }
             self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -341,6 +344,7 @@ mod drc721_collection {
 
         #[contract(emits = [(PAUSED_TOPIC, Paused)])]
         pub fn pause(&mut self, args: AdminCall) {
+            self.pausable.assert_not_paused();
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -350,13 +354,13 @@ mod drc721_collection {
                     empty_payload_hash(b"drc721.pause"),
                 ),
             );
-            self.pausable.assert_not_paused();
             self.pausable.pause();
             Self::emit_paused(caller);
         }
 
         #[contract(emits = [(UNPAUSED_TOPIC, Unpaused)])]
         pub fn unpause(&mut self, args: AdminCall) {
+            self.pausable.assert_paused();
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -366,7 +370,6 @@ mod drc721_collection {
                     empty_payload_hash(b"drc721.unpause"),
                 ),
             );
-            self.pausable.assert_paused();
             self.pausable.unpause();
             Self::emit_unpaused(caller);
         }
@@ -377,6 +380,7 @@ mod drc721_collection {
 
         #[contract(emits = [(DEFAULT_ROYALTY_SET_TOPIC, DefaultRoyaltySet)])]
         pub fn set_default_royalty(&mut self, args: SetDefaultRoyaltyCall) {
+            validate_royalty(args.info);
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -409,6 +413,7 @@ mod drc721_collection {
 
         #[contract(emits = [(TOKEN_ROYALTY_SET_TOPIC, TokenRoyaltySet)])]
         pub fn set_token_royalty(&mut self, args: SetTokenRoyaltyCall) {
+            validate_royalty(args.info);
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
                 ActionEnvelope::new(
@@ -600,6 +605,15 @@ mod drc721_collection {
         let mut bytes = Vec::from(&b"drc721.token"[..]);
         bytes.extend_from_slice(&token_id.to_be_bytes());
         abi::keccak256(bytes)
+    }
+
+    fn validate_royalty(info: RoyaltyInfo) {
+        if info.receiver.is_zero() {
+            panic!("{}", error::ZERO_PRINCIPAL);
+        }
+        if info.basis_points > MAX_BASIS_POINTS {
+            panic!("DRC721: royalty exceeds sale price");
+        }
     }
 
     fn push_principal(bytes: &mut Vec<u8>, principal: Principal) {

@@ -9,12 +9,14 @@ use dusk_contract_standards::auth::{
 use dusk_contract_standards::core::{NonceDomain, Principal};
 use dusk_contract_standards::token::drc20::{
     Allowance, BalanceOf as BalanceOf20, Init as Init20, InitBalance,
-    SignedApproveCall,
+    SignedApproveCall, TransferCall as TransferCall20,
+    TransferFromCall as TransferFromCall20,
 };
 use dusk_contract_standards::token::drc721::{
     GetApproved, Init as Init721, InitToken, IsApprovedForAll, OwnerOf,
-    SignedApproveCall as SignedNftApproveCall, SignedSetApprovalForAllCall,
-    TokensOf,
+    RoyaltyInfo, SignedApproveCall as SignedNftApproveCall,
+    SignedSetApprovalForAllCall, TokensOf,
+    TransferFromCall as TransferFromCall721,
 };
 use dusk_core::abi::{ContractId, Metadata};
 use dusk_core::signatures::bls::{
@@ -45,6 +47,7 @@ const NFT_ADMIN_DOMAIN: NonceDomain = [21u8; 32];
 const NFT_MINT_ACTION: [u8; 32] = [22u8; 32];
 const NFT_PAUSE_ACTION: [u8; 32] = [23u8; 32];
 const NFT_UNPAUSE_ACTION: [u8; 32] = [24u8; 32];
+const NFT_SET_DEFAULT_ROYALTY_ACTION: [u8; 32] = [25u8; 32];
 const NFT_SIGNED_APPROVE_DOMAIN: NonceDomain = [29u8; 32];
 const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
 const NFT_SIGNED_APPROVAL_FOR_ALL_ACTION: [u8; 32] = [31u8; 32];
@@ -116,6 +119,13 @@ struct Drc721MintCall {
 #[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[archive_attr(derive(CheckBytes))]
 struct Drc721AdminCall {
+    authorization: Option<SignedAuthorization>,
+}
+
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[archive_attr(derive(CheckBytes))]
+struct Drc721SetDefaultRoyaltyCall {
+    info: RoyaltyInfo,
     authorization: Option<SignedAuthorization>,
 }
 
@@ -390,6 +400,152 @@ fn exercise_drc20_signed_calls(
         .is_err());
     assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 1);
 
+    let wrong_contract_mint = authorized_action(
+        ContractId::from_bytes([77u8; 32]),
+        admin,
+        TOKEN_ADMIN_DOMAIN,
+        MINT_ACTION,
+        1,
+        0,
+        mint_payload_hash(admin, 8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc20MintCall {
+                to: admin,
+                amount: 8,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        wrong_contract_mint,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 1);
+
+    let wrong_action_mint = authorized_action(
+        contract,
+        admin,
+        TOKEN_ADMIN_DOMAIN,
+        [0xab; 32],
+        1,
+        0,
+        mint_payload_hash(admin, 8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc20MintCall {
+                to: admin,
+                amount: 8,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        wrong_action_mint,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 1);
+
+    let expired_mint = authorized_action(
+        contract,
+        admin,
+        TOKEN_ADMIN_DOMAIN,
+        MINT_ACTION,
+        1,
+        9,
+        mint_payload_hash(admin, 8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc20MintCall {
+                to: admin,
+                amount: 8,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(&mut rng, &admin_sk, admin_pk, expired_mint),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 1);
+
+    let cap_exceeded_mint = authorized_action(
+        contract,
+        admin,
+        TOKEN_ADMIN_DOMAIN,
+        MINT_ACTION,
+        1,
+        0,
+        mint_payload_hash(admin, 10_000),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc20MintCall {
+                to: admin,
+                amount: 10_000,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        cap_exceeded_mint,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 1);
+
+    let zero = Principal::Contract(ContractId::from_bytes([0u8; 32]));
+    let zero_recipient_mint = authorized_action(
+        contract,
+        admin,
+        TOKEN_ADMIN_DOMAIN,
+        MINT_ACTION,
+        1,
+        0,
+        mint_payload_hash(zero, 1),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc20MintCall {
+                to: zero,
+                amount: 1,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        zero_recipient_mint,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 1);
+
     let spender_sk = moonlight_secret(30);
     let spender_pk = BlsPublicKey::from(&spender_sk);
     let spender = Principal::moonlight(&spender_pk);
@@ -449,6 +605,77 @@ fn exercise_drc20_signed_calls(
             GAS_LIMIT,
         )
         .is_err());
+
+    let bad_approve_payload = authorized_action(
+        contract,
+        admin,
+        SIGNED_APPROVE_DOMAIN,
+        SIGNED_APPROVE_ACTION,
+        1,
+        0,
+        approve_payload_hash(admin, spender, 34),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedApproveCall {
+                owner: admin,
+                spender,
+                amount: 35,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    bad_approve_payload,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, SIGNED_APPROVE_DOMAIN, 1);
+    let allowance: u64 = session
+        .call(
+            contract,
+            "allowance",
+            &Allowance {
+                owner: admin,
+                spender,
+            },
+            GAS_LIMIT,
+        )
+        .expect("query signed allowance after bad payload")
+        .data;
+    assert_eq!(allowance, 33);
+
+    let expired_approve = authorized_action(
+        contract,
+        admin,
+        SIGNED_APPROVE_DOMAIN,
+        SIGNED_APPROVE_ACTION,
+        1,
+        9,
+        approve_payload_hash(admin, spender, 34),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedApproveCall {
+                owner: admin,
+                spender,
+                amount: 34,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    expired_approve,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, SIGNED_APPROVE_DOMAIN, 1);
 
     let moonlight_owner_sk = moonlight_secret(31);
     let moonlight_owner_pk = BlsPublicKey::from(&moonlight_owner_sk);
@@ -515,6 +742,56 @@ fn exercise_drc20_signed_calls(
     assert!(paused);
     assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 2);
 
+    let duplicate_pause = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &admin_sk,
+        admin_pk,
+        authorized_action(
+            contract,
+            admin,
+            TOKEN_ADMIN_DOMAIN,
+            PAUSE_ACTION,
+            2,
+            0,
+            empty_payload_hash(b"drc20.pause"),
+        ),
+    ));
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "pause",
+            &Drc20AdminCall {
+                authorization: Some(duplicate_pause),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 2);
+
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "transfer",
+            &TransferCall20 {
+                to: admin,
+                amount: 1,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "transfer_from",
+            &TransferFromCall20 {
+                owner: admin,
+                to: admin,
+                amount: 1,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+
     let paused_mint = SignedAuthorization::Phoenix(phoenix_auth(
         &mut rng,
         &admin_sk,
@@ -573,6 +850,32 @@ fn exercise_drc20_signed_calls(
         .data;
     assert!(!paused);
     assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 3);
+
+    let duplicate_unpause = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &admin_sk,
+        admin_pk,
+        authorized_action(
+            contract,
+            admin,
+            TOKEN_ADMIN_DOMAIN,
+            UNPAUSE_ACTION,
+            3,
+            0,
+            empty_payload_hash(b"drc20.unpause"),
+        ),
+    ));
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "unpause",
+            &Drc20AdminCall {
+                authorization: Some(duplicate_unpause),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 3);
 }
 
 fn exercise_drc721_signed_calls(
@@ -613,6 +916,122 @@ fn exercise_drc721_signed_calls(
         .expect("query signed NFT mint owner")
         .data;
     assert_eq!(owner, admin);
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
+
+    let wrong_contract_mint = authorized_action(
+        ContractId::from_bytes([78u8; 32]),
+        admin,
+        NFT_ADMIN_DOMAIN,
+        NFT_MINT_ACTION,
+        1,
+        0,
+        nft_mint_payload_hash(admin, 44),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc721MintCall {
+                to: admin,
+                token_id: 44,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        wrong_contract_mint,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
+
+    let wrong_action_mint = authorized_action(
+        contract,
+        admin,
+        NFT_ADMIN_DOMAIN,
+        [0xac; 32],
+        1,
+        0,
+        nft_mint_payload_hash(admin, 44),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc721MintCall {
+                to: admin,
+                token_id: 44,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        wrong_action_mint
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
+
+    let expired_mint = authorized_action(
+        contract,
+        admin,
+        NFT_ADMIN_DOMAIN,
+        NFT_MINT_ACTION,
+        1,
+        9,
+        nft_mint_payload_hash(admin, 44),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc721MintCall {
+                to: admin,
+                token_id: 44,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(&mut rng, &admin_sk, admin_pk, expired_mint),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
+
+    let zero = Principal::Contract(ContractId::from_bytes([0u8; 32]));
+    let zero_recipient_mint = authorized_action(
+        contract,
+        admin,
+        NFT_ADMIN_DOMAIN,
+        NFT_MINT_ACTION,
+        1,
+        0,
+        nft_mint_payload_hash(zero, 44),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "mint",
+            &Drc721MintCall {
+                to: zero,
+                token_id: 44,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        zero_recipient_mint,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
     assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
 
     let approved = Principal::Contract(ContractId::from_bytes([55u8; 32]));
@@ -710,6 +1129,111 @@ fn exercise_drc721_signed_calls(
         1,
     );
 
+    let wrong_contract_approval = authorized_action(
+        ContractId::from_bytes([79u8; 32]),
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVE_ACTION,
+        1,
+        0,
+        nft_approve_payload_hash(admin, approved, 43),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedNftApproveCall {
+                owner: admin,
+                approved,
+                token_id: 43,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    wrong_contract_approval,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        1,
+    );
+
+    let wrong_action_approval = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        [0xad; 32],
+        1,
+        0,
+        nft_approve_payload_hash(admin, approved, 43),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedNftApproveCall {
+                owner: admin,
+                approved,
+                token_id: 43,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    wrong_action_approval,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        1,
+    );
+
+    let expired_approval = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVE_ACTION,
+        1,
+        9,
+        nft_approve_payload_hash(admin, approved, 43),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedNftApproveCall {
+                owner: admin,
+                approved,
+                token_id: 43,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    expired_approval,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        1,
+    );
+
     let operator = Principal::Contract(ContractId::from_bytes([56u8; 32]));
     let operator_action = authorized_action(
         contract,
@@ -720,6 +1244,12 @@ fn exercise_drc721_signed_calls(
         0,
         nft_approval_for_all_payload_hash(admin, operator, true),
     );
+    let operator_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &admin_sk,
+        admin_pk,
+        operator_action,
+    ));
     session
         .call::<_, ()>(
             contract,
@@ -728,12 +1258,7 @@ fn exercise_drc721_signed_calls(
                 owner: admin,
                 operator,
                 approved: true,
-                authorization: SignedAuthorization::Phoenix(phoenix_auth(
-                    &mut rng,
-                    &admin_sk,
-                    admin_pk,
-                    operator_action,
-                )),
+                authorization: operator_auth.clone(),
             },
             GAS_LIMIT,
         )
@@ -758,6 +1283,164 @@ fn exercise_drc721_signed_calls(
         NFT_SIGNED_APPROVE_DOMAIN,
         2,
     );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_approval_for_all_by_authorization",
+            &SignedSetApprovalForAllCall {
+                owner: admin,
+                operator,
+                approved: true,
+                authorization: operator_auth,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        2,
+    );
+
+    let bad_operator_payload = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+        2,
+        0,
+        nft_approval_for_all_payload_hash(admin, operator, false),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_approval_for_all_by_authorization",
+            &SignedSetApprovalForAllCall {
+                owner: admin,
+                operator,
+                approved: true,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    bad_operator_payload,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        2,
+    );
+
+    let wrong_action_operator = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        [0xae; 32],
+        2,
+        0,
+        nft_approval_for_all_payload_hash(admin, operator, false),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_approval_for_all_by_authorization",
+            &SignedSetApprovalForAllCall {
+                owner: admin,
+                operator,
+                approved: false,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    wrong_action_operator,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        2,
+    );
+
+    let expired_operator = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+        2,
+        9,
+        nft_approval_for_all_payload_hash(admin, operator, false),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_approval_for_all_by_authorization",
+            &SignedSetApprovalForAllCall {
+                owner: admin,
+                operator,
+                approved: false,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    expired_operator,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        2,
+    );
+
+    let invalid_royalty = RoyaltyInfo {
+        receiver: admin,
+        basis_points: 10_001,
+    };
+    let invalid_royalty_action = authorized_action(
+        contract,
+        admin,
+        NFT_ADMIN_DOMAIN,
+        NFT_SET_DEFAULT_ROYALTY_ACTION,
+        1,
+        0,
+        royalty_payload_hash(None, invalid_royalty),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_default_royalty",
+            &Drc721SetDefaultRoyaltyCall {
+                info: invalid_royalty,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(
+                        &mut rng,
+                        &admin_sk,
+                        admin_pk,
+                        invalid_royalty_action,
+                    ),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
 
     let pause_action = authorized_action(
         contract,
@@ -786,6 +1469,45 @@ fn exercise_drc721_signed_calls(
         .data;
     assert!(paused);
     assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 2);
+
+    let duplicate_pause = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &admin_sk,
+        admin_pk,
+        authorized_action(
+            contract,
+            admin,
+            NFT_ADMIN_DOMAIN,
+            NFT_PAUSE_ACTION,
+            2,
+            0,
+            empty_payload_hash(b"drc721.pause"),
+        ),
+    ));
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "pause",
+            &Drc721AdminCall {
+                authorization: Some(duplicate_pause),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 2);
+
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "transfer_from",
+            &TransferFromCall721 {
+                from: admin,
+                to: admin,
+                token_id: 43,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
 
     let paused_operator_action = authorized_action(
         contract,
@@ -893,6 +1615,32 @@ fn exercise_drc721_signed_calls(
         .data;
     assert!(!paused);
     assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 3);
+
+    let duplicate_unpause = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &admin_sk,
+        admin_pk,
+        authorized_action(
+            contract,
+            admin,
+            NFT_ADMIN_DOMAIN,
+            NFT_UNPAUSE_ACTION,
+            3,
+            0,
+            empty_payload_hash(b"drc721.unpause"),
+        ),
+    ));
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "unpause",
+            &Drc721AdminCall {
+                authorization: Some(duplicate_unpause),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 3);
 }
 
 fn exercise_proxy_signed_admin_call(
@@ -943,6 +1691,108 @@ fn exercise_proxy_signed_admin_call(
             GAS_LIMIT,
         )
         .is_err());
+    assert_contract_nonce(session, contract, admin, PROXY_ADMIN_DOMAIN, 1);
+    let value: u64 = session
+        .call(contract, "value", &(), GAS_LIMIT)
+        .expect("query proxy value after replay")
+        .data;
+    assert_eq!(value, 7);
+
+    let wrong_payload = authorized_action(
+        contract,
+        admin,
+        PROXY_ADMIN_DOMAIN,
+        SET_PROXY_VALUE_ACTION,
+        1,
+        0,
+        proxy_value_payload_hash(8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_value",
+            &ProxySetValue {
+                value: 9,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(&mut rng, &admin_sk, admin_pk, wrong_payload),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, PROXY_ADMIN_DOMAIN, 1);
+
+    let wrong_contract = authorized_action(
+        ContractId::from_bytes([80u8; 32]),
+        admin,
+        PROXY_ADMIN_DOMAIN,
+        SET_PROXY_VALUE_ACTION,
+        1,
+        0,
+        proxy_value_payload_hash(8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_value",
+            &ProxySetValue {
+                value: 8,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(&mut rng, &admin_sk, admin_pk, wrong_contract),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, PROXY_ADMIN_DOMAIN, 1);
+
+    let wrong_action = authorized_action(
+        contract,
+        admin,
+        PROXY_ADMIN_DOMAIN,
+        [0xaf; 32],
+        1,
+        0,
+        proxy_value_payload_hash(8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_value",
+            &ProxySetValue {
+                value: 8,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(&mut rng, &admin_sk, admin_pk, wrong_action),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, PROXY_ADMIN_DOMAIN, 1);
+
+    let expired = authorized_action(
+        contract,
+        admin,
+        PROXY_ADMIN_DOMAIN,
+        SET_PROXY_VALUE_ACTION,
+        1,
+        9,
+        proxy_value_payload_hash(8),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_value",
+            &ProxySetValue {
+                value: 8,
+                authorization: Some(SignedAuthorization::Phoenix(
+                    phoenix_auth(&mut rng, &admin_sk, admin_pk, expired),
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, contract, admin, PROXY_ADMIN_DOMAIN, 1);
 }
 
 fn exercise_authorization_counter_signed_calls(
@@ -1449,6 +2299,20 @@ fn nft_approval_for_all_payload_hash(
     push_principal(&mut bytes, owner);
     push_principal(&mut bytes, operator);
     bytes.push(u8::from(approved));
+    host_queries::keccak256(bytes)
+}
+
+fn royalty_payload_hash(token_id: Option<u64>, info: RoyaltyInfo) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"drc721.royalty"[..]);
+    match token_id {
+        Some(token_id) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&token_id.to_be_bytes());
+        }
+        None => bytes.push(0),
+    }
+    push_principal(&mut bytes, info.receiver);
+    bytes.extend_from_slice(&info.basis_points.to_be_bytes());
     host_queries::keccak256(bytes)
 }
 
