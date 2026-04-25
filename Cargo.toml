@@ -1,5 +1,12 @@
 [workspace]
 members = [
+    # Dusk-native reusable contract primitives
+    "standards/dusk-contract-standards",
+    "standards/examples/authorization_counter",
+    "standards/examples/drc20_roles_pausable",
+    "standards/examples/drc721_collection",
+    "standards/examples/proxy_counter",
+
     # Test contracts
     "tests/alice",
     "tests/bob",
@@ -15,12 +22,14 @@ resolver = "2"
 
 [workspace.dependencies]
 # Dusk dependencies
-dusk-core = "1.4.0"
+dusk-core = { path = "../rusk-private/core" }
 dusk-bytes = "0.1.7"
-dusk-vm = "1.4.3"
-dusk-wallet-core = "1.4.0"
-rusk-profile = "1.4.0"
-rusk-prover = "1.3.0"
+dusk-data-driver = { path = "../rusk-private/data-drivers/data-driver" }
+dusk-forge = { path = "../forge-explicit-emits" }
+dusk-vm = { path = "../rusk-private/vm" }
+dusk-wallet-core = { path = "../rusk-private/wallet-core" }
+rusk-profile = { path = "../rusk-private/rusk-profile" }
+rusk-prover = { path = "../rusk-private/rusk-prover" }
 
 # Other dependencies
 bytecheck = { version = "0.6.12", default-features = false }
@@ -29,6 +38,18 @@ ff = { version = "0.13", default-features = false }
 rand = { version = "0.8.5", default-features = false }
 ringbuffer = "0.15"
 rkyv = { version = "0.7.39", default-features = false }
+serde = { version = "1", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+serde_json = { version = "1", default-features = false }
+serde_with = { version = "=3.9.0", default-features = false, features = [
+    "hex",
+] }
+
+# Keep the data-driver dependency graph compatible with the repository's
+# current nightly toolchain.
+time = { version = "=0.3.36", default-features = false }
 
 [profile.dev.build-override]
 opt-level = 3

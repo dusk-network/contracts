@@ -1,4 +1,5 @@
-SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
+STANDARDS_EXAMPLES := standards/examples/authorization_counter standards/examples/drc20_roles_pausable standards/examples/drc721_collection standards/examples/proxy_counter
+SUBDIRS := standards/dusk-contract-standards $(STANDARDS_EXAMPLES) tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
 
 all: setup-compiler $(SUBDIRS) ## Build all the contracts
 
@@ -12,6 +13,9 @@ test: wasm ## Run all the tests in the subfolder
 
 wasm: setup-compiler ## Generate the WASM for all the contracts
 	$(MAKE) $(SUBDIRS) MAKECMDGOALS=wasm
+
+standards-data-drivers: ## Generate Forge data-driver WASM for standards reference contracts
+	$(MAKE) $(STANDARDS_EXAMPLES) MAKECMDGOALS=wasm-dd
 
 clippy: setup-compiler ## Run clippy
 	$(MAKE) $(SUBDIRS) MAKECMDGOALS=clippy
@@ -29,4 +33,4 @@ doc: $(SUBDIRS) ## Run doc gen
 $(SUBDIRS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-.PHONY: all test help $(SUBDIRS)
+.PHONY: all test help standards-data-drivers $(SUBDIRS)
