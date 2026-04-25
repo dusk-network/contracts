@@ -12,7 +12,9 @@ use dusk_contract_standards::token::drc20::{
     SignedApproveCall,
 };
 use dusk_contract_standards::token::drc721::{
-    Init as Init721, InitToken, OwnerOf, TokensOf,
+    GetApproved, Init as Init721, InitToken, IsApprovedForAll, OwnerOf,
+    SignedApproveCall as SignedNftApproveCall, SignedSetApprovalForAllCall,
+    TokensOf,
 };
 use dusk_core::abi::{ContractId, Metadata};
 use dusk_core::signatures::bls::{
@@ -43,6 +45,9 @@ const NFT_ADMIN_DOMAIN: NonceDomain = [21u8; 32];
 const NFT_MINT_ACTION: [u8; 32] = [22u8; 32];
 const NFT_PAUSE_ACTION: [u8; 32] = [23u8; 32];
 const NFT_UNPAUSE_ACTION: [u8; 32] = [24u8; 32];
+const NFT_SIGNED_APPROVE_DOMAIN: NonceDomain = [29u8; 32];
+const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
+const NFT_SIGNED_APPROVAL_FOR_ALL_ACTION: [u8; 32] = [31u8; 32];
 const PROXY_ADMIN_DOMAIN: NonceDomain = [31u8; 32];
 const SET_PROXY_VALUE_ACTION: [u8; 32] = [32u8; 32];
 
@@ -610,6 +615,150 @@ fn exercise_drc721_signed_calls(
     assert_eq!(owner, admin);
     assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 1);
 
+    let approved = Principal::Contract(ContractId::from_bytes([55u8; 32]));
+    let approve_action = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVE_ACTION,
+        0,
+        0,
+        nft_approve_payload_hash(admin, approved, 43),
+    );
+    let approve_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &admin_sk,
+        admin_pk,
+        approve_action,
+    ));
+    session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedNftApproveCall {
+                owner: admin,
+                approved,
+                token_id: 43,
+                authorization: approve_auth.clone(),
+            },
+            GAS_LIMIT,
+        )
+        .expect("approve NFT by signed Phoenix owner");
+    let actual_approved: Principal = session
+        .call(
+            contract,
+            "get_approved",
+            &GetApproved { token_id: 43 },
+            GAS_LIMIT,
+        )
+        .expect("query signed NFT approval")
+        .data;
+    assert_eq!(actual_approved, approved);
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        1,
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedNftApproveCall {
+                owner: admin,
+                approved,
+                token_id: 43,
+                authorization: approve_auth,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+
+    let bad_payload_action = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVE_ACTION,
+        1,
+        0,
+        nft_approve_payload_hash(admin, approved, 44),
+    );
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "approve_by_authorization",
+            &SignedNftApproveCall {
+                owner: admin,
+                approved,
+                token_id: 43,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    bad_payload_action,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        1,
+    );
+
+    let operator = Principal::Contract(ContractId::from_bytes([56u8; 32]));
+    let operator_action = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+        1,
+        0,
+        nft_approval_for_all_payload_hash(admin, operator, true),
+    );
+    session
+        .call::<_, ()>(
+            contract,
+            "set_approval_for_all_by_authorization",
+            &SignedSetApprovalForAllCall {
+                owner: admin,
+                operator,
+                approved: true,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    operator_action,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .expect("set NFT operator approval by signed Phoenix owner");
+    let operator_approved: bool = session
+        .call(
+            contract,
+            "is_approved_for_all",
+            &IsApprovedForAll {
+                owner: admin,
+                operator,
+            },
+            GAS_LIMIT,
+        )
+        .expect("query signed NFT operator approval")
+        .data;
+    assert!(operator_approved);
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        2,
+    );
+
     let pause_action = authorized_action(
         contract,
         admin,
@@ -637,6 +786,54 @@ fn exercise_drc721_signed_calls(
         .data;
     assert!(paused);
     assert_contract_nonce(session, contract, admin, NFT_ADMIN_DOMAIN, 2);
+
+    let paused_operator_action = authorized_action(
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+        2,
+        0,
+        nft_approval_for_all_payload_hash(admin, operator, false),
+    );
+    session
+        .call::<_, ()>(
+            contract,
+            "set_approval_for_all_by_authorization",
+            &SignedSetApprovalForAllCall {
+                owner: admin,
+                operator,
+                approved: false,
+                authorization: SignedAuthorization::Phoenix(phoenix_auth(
+                    &mut rng,
+                    &admin_sk,
+                    admin_pk,
+                    paused_operator_action,
+                )),
+            },
+            GAS_LIMIT,
+        )
+        .expect("signed NFT operator approval remains available while paused");
+    let operator_approved: bool = session
+        .call(
+            contract,
+            "is_approved_for_all",
+            &IsApprovedForAll {
+                owner: admin,
+                operator,
+            },
+            GAS_LIMIT,
+        )
+        .expect("query paused signed NFT operator approval")
+        .data;
+    assert!(!operator_approved);
+    assert_contract_nonce(
+        session,
+        contract,
+        admin,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        3,
+    );
 
     let paused_mint = SignedAuthorization::Phoenix(phoenix_auth(
         &mut rng,
@@ -1228,6 +1425,30 @@ fn nft_mint_payload_hash(to: Principal, token_id: u64) -> [u8; 32] {
     let mut bytes = Vec::from(&b"drc721.mint"[..]);
     push_principal(&mut bytes, to);
     bytes.extend_from_slice(&token_id.to_be_bytes());
+    host_queries::keccak256(bytes)
+}
+
+fn nft_approve_payload_hash(
+    owner: Principal,
+    approved: Principal,
+    token_id: u64,
+) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"drc721.approve"[..]);
+    push_principal(&mut bytes, owner);
+    push_principal(&mut bytes, approved);
+    bytes.extend_from_slice(&token_id.to_be_bytes());
+    host_queries::keccak256(bytes)
+}
+
+fn nft_approval_for_all_payload_hash(
+    owner: Principal,
+    operator: Principal,
+    approved: bool,
+) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"drc721.approval_for_all"[..]);
+    push_principal(&mut bytes, owner);
+    push_principal(&mut bytes, operator);
+    bytes.push(u8::from(approved));
     host_queries::keccak256(bytes)
 }
 

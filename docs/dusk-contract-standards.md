@@ -63,12 +63,13 @@ functions.
 
 DRC20 includes optional supply-cap, burnable, pausable, signed approval, and
 voting-unit checkpoint patterns. DRC721 includes enumerable queries, burnable,
-pausable, and default/token-specific royalty patterns. The reference pausable
-tokens pause all balance-changing operations: transfers, minting, and burning.
-Approvals remain available while paused. These remain composing contract choices
-rather than mandatory behavior baked into every token. Reference contracts emit
-typed pause/unpause, role grant/revoke, royalty change, transfer, approval, and
-proxy value/upgrade events instead of leaving policy mutations silent.
+pausable, signed token/operator approvals, and default/token-specific royalty
+patterns. The reference pausable tokens pause all balance-changing operations:
+transfers, minting, and burning. Approvals remain available while paused. These
+remain composing contract choices rather than mandatory behavior baked into
+every token. Reference contracts emit typed pause/unpause, role grant/revoke,
+royalty change, transfer, approval, and proxy value/upgrade events instead of
+leaving policy mutations silent.
 
 Proxy support is expressed as an upgrade admin state machine and a namespaced
 state store. The example records the active implementation id, delay, migration
@@ -114,6 +115,13 @@ Admin references follow the same rule. Signed mint, role, royalty, and proxy
 calls validate `contract`, `domain`, `action_id`, and `payload_hash` before
 consuming the signature nonce.
 
+The DRC721 reference exposes `approve_by_authorization` and
+`set_approval_for_all_by_authorization`. Token approval hashes use the ASCII
+domain tag `drc721.approve`, owner principal bytes, approved principal bytes,
+and the big-endian token id. Operator approval hashes use
+`drc721.approval_for_all`, owner principal bytes, operator principal bytes, and
+a single `0` or `1` approval byte.
+
 Use stable constants for `domain` and `action_id`. `domain` separates nonce
 streams such as permits, role-admin actions, upgrade approvals, and voting.
 `action_id` separates operations inside the same stream. Reusing a domain is
@@ -133,8 +141,8 @@ spent.
 See
 `standards/dusk-contract-standards/examples/build_signed_authorizations.rs` for
 a compact client-side Rust example that builds the DRC20 signed-approval
-payload hash, constructs `AuthorizedAction`, and signs it with Moonlight BLS
-and Phoenix Schnorr keys.
+and DRC721 signed-approval payload hashes, constructs `AuthorizedAction`, and
+signs them with Moonlight BLS and Phoenix Schnorr keys.
 
 Nonce protection rejects replay after a signed action is consumed. Expiry is
 optional but recommended for relayed or delayed execution, because an unused
@@ -200,10 +208,10 @@ paths, performs real Moonlight and Phoenix signed calls against the
 authorization counter, covers replay/wrong-payload/wrong-signature/wrong-target
 failures, submits signed DRC20 mint and signed DRC20 approvals, verifies paused
 DRC20/DRC721 signed mint rejection without nonce movement, submits signed
-DRC721 owner actions, submits a signed proxy admin call, covers
-replay/wrong-payload failures for those reference flows, and calls privileged
-functions without a runtime caller to validate the negative authorization path
-at the VM boundary.
+DRC721 owner actions and signed DRC721 approvals, submits a signed proxy admin
+call, covers replay/wrong-payload failures for those reference flows, and calls
+privileged functions without a runtime caller to validate the negative
+authorization path at the VM boundary.
 
 Run the focused suite with:
 

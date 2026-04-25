@@ -369,12 +369,41 @@ run_signed_invariants() {
     "$(query_u64 "$drc721_id" total_supply "$unit_args")" 2
   assert_eq "DRC721 admin nonce after mint" \
     "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-admin phoenix 1)")" 1
+  expect_call_ok "DRC721 signed token approval" \
+    "$drc721_id" approve_by_authorization \
+    "$(encode_args drc721-approve "$drc721_id" 0 "$expires_at" 2)"
+  assert_eq "DRC721 approval nonce after token approval" \
+    "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-approval phoenix 1)")" 1
+  expect_call_rejected "DRC721 signed token approval replay" \
+    "$drc721_id" approve_by_authorization \
+    "$(encode_args drc721-approve "$drc721_id" 0 "$expires_at" 2)"
+  assert_eq "DRC721 approval nonce after token approval replay" \
+    "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-approval phoenix 1)")" 1
+  expect_call_rejected "DRC721 signed token approval bad payload" \
+    "$drc721_id" approve_by_authorization \
+    "$(encode_args drc721-approve "$drc721_id" 1 "$expires_at" 2 bad-payload)"
+  assert_eq "DRC721 approval nonce after bad payload" \
+    "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-approval phoenix 1)")" 1
+  expect_call_ok "DRC721 signed operator approval" \
+    "$drc721_id" set_approval_for_all_by_authorization \
+    "$(encode_args drc721-operator-approval "$drc721_id" 1 "$expires_at" true)"
+  assert_eq "DRC721 signed operator approval state" \
+    "$(query_bool "$drc721_id" is_approved_for_all "$(encode_args drc721-operator-query)")" true
+  assert_eq "DRC721 approval nonce after operator approval" \
+    "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-approval phoenix 1)")" 2
   expect_call_ok "DRC721 signed pause" \
     "$drc721_id" pause "$(encode_args drc721-admin pause "$drc721_id" 1 "$expires_at")"
   assert_eq "DRC721 paused" \
     "$(query_bool "$drc721_id" paused "$unit_args")" true
   assert_eq "DRC721 admin nonce after pause" \
     "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-admin phoenix 1)")" 2
+  expect_call_ok "DRC721 signed operator approval while paused" \
+    "$drc721_id" set_approval_for_all_by_authorization \
+    "$(encode_args drc721-operator-approval "$drc721_id" 2 "$expires_at" false)"
+  assert_eq "DRC721 signed operator approval state while paused" \
+    "$(query_bool "$drc721_id" is_approved_for_all "$(encode_args drc721-operator-query)")" false
+  assert_eq "DRC721 approval nonce after paused operator approval" \
+    "$(query_u64 "$drc721_id" nonce "$(encode_args nonce drc721-approval phoenix 1)")" 3
   expect_call_rejected "DRC721 paused mint" \
     "$drc721_id" mint "$(encode_args drc721-mint "$drc721_id" 2 "$expires_at" 3)"
   assert_eq "DRC721 supply after paused mint" \

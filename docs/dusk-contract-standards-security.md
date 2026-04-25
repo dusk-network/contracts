@@ -44,6 +44,8 @@ operations: transfers, minting, and burning. Approvals remain available while
 paused so accounts can prepare permissions without moving balances or ownership.
 Pause and unpause operations emit typed events, and role and royalty policy
 changes are also observable through typed events.
+Signed DRC721 token/operator approvals follow the same nonce-bound action
+model as DRC20 signed approvals and remain available while paused.
 
 ## Reentrancy and Call Stack
 

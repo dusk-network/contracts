@@ -19,6 +19,8 @@ use rand::SeedableRng;
 
 const SIGNED_APPROVE_DOMAIN: NonceDomain = [12u8; 32];
 const SIGNED_APPROVE_ACTION: [u8; 32] = [18u8; 32];
+const NFT_SIGNED_APPROVE_DOMAIN: NonceDomain = [29u8; 32];
+const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
 const EXAMPLE_EXPIRES_AT: u64 = 1_000;
 
 fn main() {
@@ -60,6 +62,28 @@ fn main() {
         SIGNED_APPROVE_ACTION,
         drc20_approve_payload_hash(phoenix_owner, spender, 100),
     );
+
+    let nft_approved = Principal::Contract(ContractId::from_bytes([8u8; 32]));
+    let nft_action = drc721_signed_approve_action(
+        contract,
+        phoenix_owner,
+        nft_approved,
+        42,
+        1,
+    );
+    let nft_approval =
+        SignedAuthorization::Phoenix(PhoenixSignatureAuthorization {
+            action: nft_action,
+            public_key: phoenix_pk,
+            signature: phoenix_sk.sign(&mut rng, nft_action.message_hash()),
+            replay_key: None,
+        });
+    nft_approval.assert_action(
+        contract,
+        NFT_SIGNED_APPROVE_DOMAIN,
+        NFT_SIGNED_APPROVE_ACTION,
+        drc721_approve_payload_hash(phoenix_owner, nft_approved, 42),
+    );
 }
 
 fn drc20_signed_approve_action(
@@ -89,6 +113,36 @@ fn drc20_approve_payload_hash(
     push_principal(&mut bytes, owner);
     push_principal(&mut bytes, spender);
     bytes.extend_from_slice(&amount.to_be_bytes());
+    host_queries::keccak256(bytes)
+}
+
+fn drc721_signed_approve_action(
+    contract: ContractId,
+    owner: Principal,
+    approved: Principal,
+    token_id: u64,
+    nonce: u64,
+) -> AuthorizedAction {
+    AuthorizedAction {
+        contract,
+        domain: NFT_SIGNED_APPROVE_DOMAIN,
+        action_id: NFT_SIGNED_APPROVE_ACTION,
+        nonce,
+        expires_at: EXAMPLE_EXPIRES_AT,
+        principal: owner,
+        payload_hash: drc721_approve_payload_hash(owner, approved, token_id),
+    }
+}
+
+fn drc721_approve_payload_hash(
+    owner: Principal,
+    approved: Principal,
+    token_id: u64,
+) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"drc721.approve"[..]);
+    push_principal(&mut bytes, owner);
+    push_principal(&mut bytes, approved);
+    bytes.extend_from_slice(&token_id.to_be_bytes());
     host_queries::keccak256(bytes)
 }
 

@@ -14,8 +14,9 @@ pub use royalty::{
 };
 pub use types::{
     ApproveCall, BalanceOf, GetApproved, Init, InitToken, IsApprovedForAll,
-    OwnerOf, SetApprovalForAllCall, TokenByIndex, TokenOfOwnerByIndex,
-    TokenUri, TokensOf, TransferFromCall,
+    OwnerOf, SetApprovalForAllCall, SignedApproveCall,
+    SignedSetApprovalForAllCall, TokenByIndex, TokenOfOwnerByIndex, TokenUri,
+    TokensOf, TransferFromCall,
 };
 
 /// Reserved zero principal.

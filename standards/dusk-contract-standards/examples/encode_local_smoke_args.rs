@@ -12,7 +12,9 @@ use dusk_contract_standards::token::drc20::{
     Init as Drc20TokenInit, InitBalance as Drc20InitBalance,
 };
 use dusk_contract_standards::token::drc721::{
-    Init as Drc721TokenInit, InitToken as Drc721InitToken,
+    Init as Drc721TokenInit, InitToken as Drc721InitToken, IsApprovedForAll,
+    SignedApproveCall as Drc721SignedApproveCall,
+    SignedSetApprovalForAllCall as Drc721SignedSetApprovalForAllCall,
 };
 use dusk_core::abi::{ContractId, StandardBufSerializer, ARGBUF_LEN};
 use dusk_core::signatures::bls::{
@@ -42,6 +44,9 @@ const NFT_ADMIN_DOMAIN: [u8; 32] = [21u8; 32];
 const NFT_MINT_ACTION: [u8; 32] = [22u8; 32];
 const NFT_PAUSE_ACTION: [u8; 32] = [23u8; 32];
 const NFT_UNPAUSE_ACTION: [u8; 32] = [24u8; 32];
+const NFT_SIGNED_APPROVE_DOMAIN: [u8; 32] = [29u8; 32];
+const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
+const NFT_SIGNED_APPROVAL_FOR_ALL_ACTION: [u8; 32] = [31u8; 32];
 const PROXY_ADMIN_DOMAIN: [u8; 32] = [31u8; 32];
 const SET_PROXY_VALUE_ACTION: [u8; 32] = [32u8; 32];
 
@@ -130,7 +135,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = env::args().collect::<Vec<_>>();
     let Some(command) = args.get(1).map(String::as_str) else {
         eprintln!(
-            "usage: encode_local_smoke_args <drc20-init|drc721-init|proxy-init|unit|u64|nonce|auth-counter-phoenix|auth-counter-moonlight|drc20-mint|drc20-admin|drc721-mint|drc721-admin|proxy-set>"
+            "usage: encode_local_smoke_args <drc20-init|drc721-init|proxy-init|unit|u64|nonce|auth-counter-phoenix|auth-counter-moonlight|drc20-mint|drc20-admin|drc721-mint|drc721-admin|drc721-approve|drc721-operator-approval|drc721-operator-query|proxy-set>"
         );
         std::process::exit(2);
     };
@@ -181,6 +186,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         "drc20-admin" => encode(&drc20_admin_call(&args, admin)?)?,
         "drc721-mint" => encode(&drc721_mint_call(&args, admin)?)?,
         "drc721-admin" => encode(&drc721_admin_call(&args, admin)?)?,
+        "drc721-approve" => encode(&drc721_approve_call(&args, admin)?)?,
+        "drc721-operator-approval" => {
+            encode(&drc721_operator_approval_call(&args, admin)?)?
+        }
+        "drc721-operator-query" => encode(&IsApprovedForAll {
+            owner: admin,
+            operator: drc721_operator_principal(),
+        })?,
         "proxy-set" => encode(&proxy_set_call(&args, admin)?)?,
         _ => {
             eprintln!("unknown command: {command}");
@@ -370,6 +383,80 @@ fn drc721_admin_call(
     })
 }
 
+fn drc721_approve_call(
+    args: &[String],
+    admin: Principal,
+) -> Result<Drc721SignedApproveCall, Box<dyn Error>> {
+    let contract = contract_arg(args, 2)?;
+    let nonce = parse_u64_arg(args, 3, "nonce")?;
+    let expires_at = parse_u64_arg(args, 4, "expires_at")?;
+    let token_id = parse_u64_arg(args, 5, "token_id")?;
+    let variant = variant_arg(args);
+    let approved = drc721_approved_principal();
+    let payload_token_id = payload_amount_for_variant(token_id, variant);
+    Ok(Drc721SignedApproveCall {
+        owner: admin,
+        approved,
+        token_id,
+        authorization: admin_phoenix_authorization(
+            AdminPhoenixAction {
+                contract,
+                admin,
+                domain: NFT_SIGNED_APPROVE_DOMAIN,
+                action_id: action_for_variant(
+                    NFT_SIGNED_APPROVE_ACTION,
+                    variant,
+                ),
+                nonce,
+                expires_at,
+                payload_hash: nft_approve_payload_hash(
+                    admin,
+                    approved,
+                    payload_token_id,
+                ),
+            },
+            variant,
+        ),
+    })
+}
+
+fn drc721_operator_approval_call(
+    args: &[String],
+    admin: Principal,
+) -> Result<Drc721SignedSetApprovalForAllCall, Box<dyn Error>> {
+    let contract = contract_arg(args, 2)?;
+    let nonce = parse_u64_arg(args, 3, "nonce")?;
+    let expires_at = parse_u64_arg(args, 4, "expires_at")?;
+    let approved = parse_bool_arg(args, 5, "approved")?;
+    let variant = variant_arg(args);
+    let operator = drc721_operator_principal();
+    let payload_approved = payload_bool_for_variant(approved, variant);
+    Ok(Drc721SignedSetApprovalForAllCall {
+        owner: admin,
+        operator,
+        approved,
+        authorization: admin_phoenix_authorization(
+            AdminPhoenixAction {
+                contract,
+                admin,
+                domain: NFT_SIGNED_APPROVE_DOMAIN,
+                action_id: action_for_variant(
+                    NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+                    variant,
+                ),
+                nonce,
+                expires_at,
+                payload_hash: nft_approval_for_all_payload_hash(
+                    admin,
+                    operator,
+                    payload_approved,
+                ),
+            },
+            variant,
+        ),
+    })
+}
+
 fn proxy_set_call(
     args: &[String],
     admin: Principal,
@@ -501,6 +588,30 @@ fn nft_mint_payload_hash(to: Principal, token_id: u64) -> [u8; 32] {
     host_queries::keccak256(bytes)
 }
 
+fn nft_approve_payload_hash(
+    owner: Principal,
+    approved: Principal,
+    token_id: u64,
+) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"drc721.approve"[..]);
+    push_principal(&mut bytes, owner);
+    push_principal(&mut bytes, approved);
+    bytes.extend_from_slice(&token_id.to_be_bytes());
+    host_queries::keccak256(bytes)
+}
+
+fn nft_approval_for_all_payload_hash(
+    owner: Principal,
+    operator: Principal,
+    approved: bool,
+) -> [u8; 32] {
+    let mut bytes = Vec::from(&b"drc721.approval_for_all"[..]);
+    push_principal(&mut bytes, owner);
+    push_principal(&mut bytes, operator);
+    bytes.push(u8::from(approved));
+    host_queries::keccak256(bytes)
+}
+
 fn proxy_value_payload_hash(value: u64) -> [u8; 32] {
     let mut bytes = Vec::from(&b"proxy.value"[..]);
     bytes.extend_from_slice(&value.to_be_bytes());
@@ -558,6 +669,14 @@ fn payload_amount_for_variant(amount: u64, variant: &str) -> u64 {
     }
 }
 
+fn payload_bool_for_variant(value: bool, variant: &str) -> bool {
+    if variant == "bad-payload" {
+        !value
+    } else {
+        value
+    }
+}
+
 fn variant_arg(args: &[String]) -> &str {
     args.get(6).map(String::as_str).unwrap_or("valid")
 }
@@ -604,6 +723,18 @@ fn principal_arg(
     }
 }
 
+fn parse_bool_arg(
+    args: &[String],
+    index: usize,
+    name: &str,
+) -> Result<bool, Box<dyn Error>> {
+    match arg(args, index, name)? {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        value => Err(format!("invalid {name}: {value}").into()),
+    }
+}
+
 fn domain_arg(
     args: &[String],
     index: usize,
@@ -612,9 +743,18 @@ fn domain_arg(
         "counter" => Ok(SET_VALUE_DOMAIN),
         "drc20-admin" => Ok(TOKEN_ADMIN_DOMAIN),
         "drc721-admin" => Ok(NFT_ADMIN_DOMAIN),
+        "drc721-approval" => Ok(NFT_SIGNED_APPROVE_DOMAIN),
         "proxy-admin" => Ok(PROXY_ADMIN_DOMAIN),
         other => Err(format!("unknown domain: {other}").into()),
     }
+}
+
+fn drc721_approved_principal() -> Principal {
+    Principal::Contract(ContractId::from_bytes([55u8; 32]))
+}
+
+fn drc721_operator_principal() -> Principal {
+    Principal::Contract(ContractId::from_bytes([56u8; 32]))
 }
 
 fn parse_hex_32(hex: &str) -> Result<[u8; 32], Box<dyn Error>> {

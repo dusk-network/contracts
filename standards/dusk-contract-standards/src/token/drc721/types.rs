@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use bytecheck::CheckBytes;
 use rkyv::{Archive, Deserialize, Serialize};
 
+use crate::auth::SignedAuthorization;
 use crate::core::Principal;
 
 /// Initial token.
@@ -152,6 +153,36 @@ pub struct SetApprovalForAllCall {
     pub operator: Principal,
     /// Approval.
     pub approved: bool,
+}
+
+/// Signed token approval call for Moonlight/Phoenix owner authorization.
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[archive_attr(derive(CheckBytes))]
+pub struct SignedApproveCall {
+    /// Token owner. Must match the signed action principal and current owner.
+    pub owner: Principal,
+    /// Approved account.
+    pub approved: Principal,
+    /// Token id.
+    pub token_id: u64,
+    /// Replay-protected authorization for this approval payload.
+    pub authorization: SignedAuthorization,
+}
+
+/// Signed operator approval call for Moonlight/Phoenix owner authorization.
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[archive_attr(derive(CheckBytes))]
+pub struct SignedSetApprovalForAllCall {
+    /// Token owner. Must match the signed action principal.
+    pub owner: Principal,
+    /// Operator.
+    pub operator: Principal,
+    /// Approval.
+    pub approved: bool,
+    /// Replay-protected authorization for this approval payload.
+    pub authorization: SignedAuthorization,
 }
 
 /// Transfer call.

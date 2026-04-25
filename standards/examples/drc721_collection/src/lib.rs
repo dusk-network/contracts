@@ -20,6 +20,9 @@ pub const SET_DEFAULT_ROYALTY_ACTION: [u8; 32] = [25u8; 32];
 pub const CLEAR_DEFAULT_ROYALTY_ACTION: [u8; 32] = [26u8; 32];
 pub const SET_TOKEN_ROYALTY_ACTION: [u8; 32] = [27u8; 32];
 pub const CLEAR_TOKEN_ROYALTY_ACTION: [u8; 32] = [28u8; 32];
+pub const NFT_SIGNED_APPROVE_DOMAIN: NonceDomain = [29u8; 32];
+pub const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
+pub const NFT_SIGNED_APPROVAL_FOR_ALL_ACTION: [u8; 32] = [31u8; 32];
 
 #[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -81,8 +84,9 @@ mod drc721_collection {
         AdminCall, ClearTokenRoyaltyCall, Init, MintCall,
         SetDefaultRoyaltyCall, SetTokenRoyaltyCall,
         CLEAR_DEFAULT_ROYALTY_ACTION, CLEAR_TOKEN_ROYALTY_ACTION, MINT_ACTION,
-        NFT_ADMIN_DOMAIN, PAUSE_ACTION, SET_DEFAULT_ROYALTY_ACTION,
-        SET_TOKEN_ROYALTY_ACTION, UNPAUSE_ACTION,
+        NFT_ADMIN_DOMAIN, NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+        NFT_SIGNED_APPROVE_ACTION, NFT_SIGNED_APPROVE_DOMAIN, PAUSE_ACTION,
+        SET_DEFAULT_ROYALTY_ACTION, SET_TOKEN_ROYALTY_ACTION, UNPAUSE_ACTION,
     };
     use dusk_contract_standards::access::events::{
         Paused, Unpaused, PAUSED_TOPIC, UNPAUSED_TOPIC,
@@ -106,8 +110,9 @@ mod drc721_collection {
     use dusk_contract_standards::token::drc721::{
         ApproveCall, BalanceOf, Drc721, GetApproved, IsApprovedForAll, OwnerOf,
         RoyaltyInfo, RoyaltyQuery, RoyaltyQuote, RoyaltyRegistry,
-        SetApprovalForAllCall, TokenByIndex, TokenOfOwnerByIndex, TokenUri,
-        TokensOf, TransferFromCall,
+        SetApprovalForAllCall, SignedApproveCall, SignedSetApprovalForAllCall,
+        TokenByIndex, TokenOfOwnerByIndex, TokenUri, TokensOf,
+        TransferFromCall,
     };
     use dusk_core::abi;
 
@@ -226,6 +231,76 @@ mod drc721_collection {
         #[contract(emits = [(APPROVAL_FOR_ALL_TOPIC, Drc721ApprovalForAll)])]
         pub fn set_approval_for_all(&mut self, args: SetApprovalForAllCall) {
             let event = self.token.set_approval_for_all(caller(), args);
+            Self::emit_approval_for_all(event);
+        }
+
+        #[contract(emits = [(APPROVAL_TOPIC, Drc721Approval)])]
+        pub fn approve_by_authorization(&mut self, args: SignedApproveCall) {
+            let owner = self.token.owner_of(OwnerOf {
+                token_id: args.token_id,
+            });
+            if args.owner != owner || args.approved == owner {
+                panic!("{}", error::UNAUTHORIZED);
+            }
+            let principal = self.authorizations.authorize_signed_action(
+                &args.authorization,
+                ActionEnvelope::new(
+                    abi::self_id(),
+                    NFT_SIGNED_APPROVE_DOMAIN,
+                    NFT_SIGNED_APPROVE_ACTION,
+                    approve_payload_hash(
+                        args.owner,
+                        args.approved,
+                        args.token_id,
+                    ),
+                ),
+                now(),
+            );
+            if principal != args.owner {
+                panic!("{}", error::UNAUTHORIZED);
+            }
+            let event = self.token.approve(
+                args.owner,
+                ApproveCall {
+                    approved: args.approved,
+                    token_id: args.token_id,
+                },
+            );
+            Self::emit_approval(event);
+        }
+
+        #[contract(emits = [(APPROVAL_FOR_ALL_TOPIC, Drc721ApprovalForAll)])]
+        pub fn set_approval_for_all_by_authorization(
+            &mut self,
+            args: SignedSetApprovalForAllCall,
+        ) {
+            if args.operator.is_zero() || args.operator == args.owner {
+                panic!("{}", error::UNAUTHORIZED);
+            }
+            let principal = self.authorizations.authorize_signed_action(
+                &args.authorization,
+                ActionEnvelope::new(
+                    abi::self_id(),
+                    NFT_SIGNED_APPROVE_DOMAIN,
+                    NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
+                    approval_for_all_payload_hash(
+                        args.owner,
+                        args.operator,
+                        args.approved,
+                    ),
+                ),
+                now(),
+            );
+            if principal != args.owner {
+                panic!("{}", error::UNAUTHORIZED);
+            }
+            let event = self.token.set_approval_for_all(
+                args.owner,
+                SetApprovalForAllCall {
+                    operator: args.operator,
+                    approved: args.approved,
+                },
+            );
             Self::emit_approval_for_all(event);
         }
 
@@ -477,6 +552,30 @@ mod drc721_collection {
         let mut bytes = Vec::from(&b"drc721.mint"[..]);
         push_principal(&mut bytes, to);
         bytes.extend_from_slice(&token_id.to_be_bytes());
+        abi::keccak256(bytes)
+    }
+
+    fn approve_payload_hash(
+        owner: Principal,
+        approved: Principal,
+        token_id: u64,
+    ) -> [u8; 32] {
+        let mut bytes = Vec::from(&b"drc721.approve"[..]);
+        push_principal(&mut bytes, owner);
+        push_principal(&mut bytes, approved);
+        bytes.extend_from_slice(&token_id.to_be_bytes());
+        abi::keccak256(bytes)
+    }
+
+    fn approval_for_all_payload_hash(
+        owner: Principal,
+        operator: Principal,
+        approved: bool,
+    ) -> [u8; 32] {
+        let mut bytes = Vec::from(&b"drc721.approval_for_all"[..]);
+        push_principal(&mut bytes, owner);
+        push_principal(&mut bytes, operator);
+        bytes.push(u8::from(approved));
         abi::keccak256(bytes)
     }
 
