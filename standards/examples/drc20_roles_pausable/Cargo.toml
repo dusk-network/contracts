@@ -1,0 +1,31 @@
+[package]
+name = "drc20-roles-pausable"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+dusk-core = { workspace = true }
+dusk-data-driver = { workspace = true, optional = true }
+dusk-forge = { workspace = true }
+dusk-contract-standards = { path = "../../dusk-contract-standards" }
+bytecheck = { workspace = true }
+rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, default-features = false, features = [
+    "alloc",
+], optional = true }
+
+[features]
+contract = ["dusk-core/abi-dlmalloc", "dusk-contract-standards/contract"]
+serde = ["dep:serde", "dusk-contract-standards/serde"]
+data-driver = [
+    "serde",
+    "dusk-core/serde",
+    "dep:dusk-data-driver",
+    "dusk-data-driver/wasm-export",
+    "dep:serde_json",
+]
+data-driver-js = ["data-driver", "dusk-data-driver/alloc"]
