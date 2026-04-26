@@ -19,8 +19,9 @@ cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
+  -p multisig-controller \
   -p proxy-counter \
-  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,proxy-counter/contract
+  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,multisig-controller/contract,proxy-counter/contract
 
 echo "Building Forge data-drivers"
 CARGO_TARGET_DIR="${ROOT_DIR}/target/data-driver" \
@@ -28,8 +29,9 @@ cargo build --release --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
+  -p multisig-controller \
   -p proxy-counter \
-  --features authorization-counter/data-driver-js,drc20-roles-pausable/data-driver-js,drc721-collection/data-driver-js,proxy-counter/data-driver-js
+  --features authorization-counter/data-driver-js,drc20-roles-pausable/data-driver-js,drc721-collection/data-driver-js,multisig-controller/data-driver-js,proxy-counter/data-driver-js
 
 echo "Running VM example deployment tests"
 cargo test -p dusk-contract-standards --test examples_vm -- --ignored
@@ -473,10 +475,17 @@ drc721_id="$(deploy_contract \
   "$(encode_args drc721-init)")"
 query_contract "DRC721 collection" "$drc721_id" "total_supply" "$unit_args"
 
+multisig_id="$(deploy_contract \
+  "multisig controller" \
+  "${ROOT_DIR}/target/wasm32-unknown-unknown/release/multisig_controller.wasm" \
+  "$((DEPLOY_NONCE_BASE + 3))" \
+  "$(encode_args multisig-init)")"
+query_contract "multisig controller" "$multisig_id" "threshold" "$unit_args"
+
 proxy_id="$(deploy_contract \
   "proxy counter" \
   "${ROOT_DIR}/target/wasm32-unknown-unknown/release/proxy_counter.wasm" \
-  "$((DEPLOY_NONCE_BASE + 3))" \
+  "$((DEPLOY_NONCE_BASE + 4))" \
   "$(encode_args proxy-init)")"
 query_contract "proxy counter" "$proxy_id" "value" "$unit_args"
 

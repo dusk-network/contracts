@@ -81,6 +81,16 @@ Multisig approvals should be bound to the exact operation through
 minting, pausing, and role administration should use separate domains or action
 ids so approvals cannot be replayed across policy surfaces.
 
+Use the standalone `MultisigController` when a ported contract wants a single
+owner/admin principal like an Ethereum contract owned by a Safe. The target
+contract should assign ownership or the relevant role to the controller's
+contract id. Owners then approve the target call through proposal/confirmation
+or signed actions, and the controller performs the call as the observed
+contract caller after threshold. Operation ids must bind chain id, controller
+id, target call bytes, and salt; failed target execution is observable through
+the execution event and should be retried with a new salt only when operators
+intend a new attempt.
+
 ## Audit Packet
 
 `docs/dusk-contract-standards-audit.md` is the auditor-facing packet for this

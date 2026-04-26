@@ -12,6 +12,7 @@ In scope:
 - `standards/examples/authorization_counter`
 - `standards/examples/drc20_roles_pausable`
 - `standards/examples/drc721_collection`
+- `standards/examples/multisig_controller`
 - `standards/examples/proxy_counter`
 - `scripts/dusk-contract-standards-local-smoke.sh`
 - `standards/dusk-contract-standards/tests/**`
@@ -58,6 +59,8 @@ The layer does not assume:
 | MULTISIG-1 | Threshold multisig requires distinct owner quorum and rejects duplicate signers before nonce/replay consumption. | primitives |
 | MULTISIG-2 | Observed Moonlight/contract owners can count toward quorum; Phoenix owners require signed action approvals. | primitives |
 | MULTISIG-3 | Multisig owner and threshold maintenance requires current quorum and rejected changes leave state unchanged. | primitives |
+| MULTISIG-4 | Standalone controller proposal/confirmation requires distinct owners, rejects duplicate confirmations without nonce movement, expires stale proposals, tombstones executed ids, and clears stale pending operations after authority-removing changes. | primitives, VM test |
+| MULTISIG-5 | A contract-owned proxy/admin path can be controlled by the standalone multisig controller through observed inter-contract caller context. | VM test |
 | ACCESS-1 | Role grants/revokes are admin-gated, reject zero accounts, and emit typed events when state changes. | primitives, DRC20 reference, data-driver event decoding |
 | ACCESS-2 | Owner and owner-set initialization reject zero principals atomically. | primitives, properties |
 | PAUSE-1 | Reference pausable DRC20/DRC721 pause all balance-changing operations. | primitives, VM test, local-node smoke |
@@ -120,7 +123,8 @@ Reviewers should focus on:
 - whether every public signed path uses action-bound helpers before nonce
   consumption;
 - whether single-owner admin paths should be replaced with
-  `ThresholdMultisig` composition before production deployment;
+  `ThresholdMultisig` composition or standalone `MultisigController`
+  ownership before production deployment;
 - whether payload-hash construction is unambiguous and domain separated enough
   for downstream wallets;
 - whether pause semantics match product/security expectations;

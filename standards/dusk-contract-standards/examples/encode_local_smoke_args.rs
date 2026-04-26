@@ -8,6 +8,7 @@ use dusk_contract_standards::auth::{
     SignedAuthorization,
 };
 use dusk_contract_standards::core::Principal;
+use dusk_contract_standards::governance::MultisigControllerConfig;
 use dusk_contract_standards::token::drc20::{
     Init as Drc20TokenInit, InitBalance as Drc20InitBalance,
 };
@@ -74,6 +75,11 @@ struct ProxyCounterInit {
 }
 
 #[derive(Archive, Serialize, Deserialize)]
+struct MultisigInit {
+    config: MultisigControllerConfig,
+}
+
+#[derive(Archive, Serialize, Deserialize)]
 struct SetValueByMoonlight {
     authorization: MoonlightAuthorization,
     amount: u64,
@@ -135,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = env::args().collect::<Vec<_>>();
     let Some(command) = args.get(1).map(String::as_str) else {
         eprintln!(
-            "usage: encode_local_smoke_args <drc20-init|drc721-init|proxy-init|unit|u64|nonce|auth-counter-phoenix|auth-counter-moonlight|drc20-mint|drc20-admin|drc721-mint|drc721-admin|drc721-approve|drc721-operator-approval|drc721-operator-query|proxy-set>"
+            "usage: encode_local_smoke_args <drc20-init|drc721-init|multisig-init|proxy-init|unit|u64|nonce|auth-counter-phoenix|auth-counter-moonlight|drc20-mint|drc20-admin|drc721-mint|drc721-admin|drc721-approve|drc721-operator-approval|drc721-operator-query|proxy-set>"
         );
         std::process::exit(2);
     };
@@ -173,6 +179,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             implementation: ContractId::from_bytes([9u8; 32]),
             upgrade_delay: 0,
             rollback_window: 10,
+        })?,
+        "multisig-init" => encode(&MultisigInit {
+            config: MultisigControllerConfig {
+                owners: vec![admin, phoenix_principal(2)],
+                threshold: 2,
+                proposal_ttl: 10,
+                tombstone_ttl: 6,
+            },
         })?,
         "unit" => encode(&())?,
         "u64" => encode(&parse_u64_arg(&args, 2, "value")?)?,

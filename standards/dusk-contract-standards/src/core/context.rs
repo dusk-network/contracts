@@ -38,21 +38,16 @@ impl CallContext {
     pub fn current() -> Self {
         use dusk_core::abi;
 
-        match abi::callstack().len() {
-            0 => Self::none(),
-            1 => {
-                let Some(pk) = abi::public_sender() else {
-                    return Self::none();
-                };
-                Self::from_principal(Principal::moonlight(&pk))
-            }
-            _ => {
-                let Some(caller) = abi::caller() else {
-                    return Self::none();
-                };
-                Self::from_principal(Principal::Contract(caller))
-            }
+        if abi::callstack().is_empty() {
+            return Self::none();
         }
+        if let Some(caller) = abi::caller() {
+            return Self::from_principal(Principal::Contract(caller));
+        }
+        let Some(pk) = abi::public_sender() else {
+            return Self::none();
+        };
+        Self::from_principal(Principal::moonlight(&pk))
     }
 
     /// Native tests must inject context explicitly.

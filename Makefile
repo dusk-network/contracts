@@ -1,4 +1,4 @@
-STANDARDS_EXAMPLES := standards/examples/authorization_counter standards/examples/drc20_roles_pausable standards/examples/drc721_collection standards/examples/proxy_counter
+STANDARDS_EXAMPLES := standards/examples/authorization_counter standards/examples/drc20_roles_pausable standards/examples/drc721_collection standards/examples/multisig_controller standards/examples/proxy_counter
 SUBDIRS := standards/dusk-contract-standards $(STANDARDS_EXAMPLES) tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
 STANDARDS_PROPTEST_CASES ?= 8192
 STANDARDS_PROPTEST_MAX_SHRINK_ITERS ?= 16384

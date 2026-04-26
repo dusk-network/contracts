@@ -4,6 +4,14 @@ use std::path::PathBuf;
 
 use dusk_contract_standards::access::events as access_events;
 use dusk_contract_standards::core::Principal;
+use dusk_contract_standards::governance::{
+    MultisigAuthorityUpdated, MultisigOperationCancelled,
+    MultisigOperationConfirmed, MultisigOperationExecuted,
+    MultisigOperationProposed, MultisigTarget, MultisigTimeLimitsUpdated,
+    MULTISIG_AUTHORITY_UPDATED_TOPIC, MULTISIG_OPERATION_CANCELLED_TOPIC,
+    MULTISIG_OPERATION_CONFIRMED_TOPIC, MULTISIG_OPERATION_EXECUTED_TOPIC,
+    MULTISIG_OPERATION_PROPOSED_TOPIC, MULTISIG_TIME_LIMITS_UPDATED_TOPIC,
+};
 use dusk_contract_standards::proxy::{
     RollbackFinalized, UpgradeActivated, UpgradeCancelled, UpgradePrepared,
     UpgradeRolledBack, ROLLBACK_FINALIZED_TOPIC, UPGRADE_ACTIVATED_TOPIC,
@@ -14,16 +22,18 @@ use dusk_contract_standards::token::drc721::{
     events as drc721_events, RoyaltyQuote,
 };
 use dusk_core::abi::ContractId;
+use dusk_core::transfer::data::ContractCall;
 use dusk_data_driver::reader::DriverReader;
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, TestRunner};
 use rkyv::ser::serializers::AllocSerializer;
 use serde_json::{json, Value};
 
-const DRIVER_NAMES: [&str; 4] = [
+const DRIVER_NAMES: [&str; 5] = [
     "authorization_counter",
     "drc20_roles_pausable",
     "drc721_collection",
+    "multisig_controller",
     "proxy_counter",
 ];
 
@@ -32,6 +42,7 @@ enum ReferenceContract {
     AuthorizationCounter,
     Drc20,
     Drc721,
+    MultisigController,
     ProxyCounter,
 }
 
@@ -190,6 +201,93 @@ fn data_driver_outputs_and_events_decode() {
             token_id: 9,
             receiver: principal_value(2),
             basis_points: 500,
+        },
+    );
+
+    let multisig = drivers.get("multisig_controller").unwrap();
+    assert_output_decodes(multisig, "owners", &vec![principal_value(1)]);
+    assert_output_decodes(multisig, "threshold", &2u16);
+    assert_output_decodes(multisig, "proposal_ttl", &10u64);
+    assert_output_decodes(multisig, "tombstone_ttl", &5u64);
+    assert_output_decodes(multisig, "operation_id", &[7u8; 32]);
+    assert_output_decodes(
+        multisig,
+        "proposal",
+        &Some(
+            dusk_contract_standards::governance::MultisigPendingOperation {
+                target: multisig_target(
+                    2,
+                    "set_value",
+                    vec![1, 2, 3],
+                    [4u8; 32],
+                ),
+                confirmations: vec![principal_value(1)],
+                deadline: 100,
+            },
+        ),
+    );
+    assert_output_decodes(multisig, "tombstone_expiry", &Some(120u64));
+    assert_output_decodes(multisig, "propose", &vec![1u8, 2, 3]);
+    assert_output_decodes(multisig, "confirm", &vec![1u8, 2, 3]);
+    assert_event_decodes(
+        multisig,
+        MULTISIG_OPERATION_PROPOSED_TOPIC,
+        &MultisigOperationProposed {
+            id: [1u8; 32],
+            authorizer: principal_value(1),
+            confirmations: 1,
+            threshold: 2,
+            deadline: 10,
+        },
+    );
+    assert_event_decodes(
+        multisig,
+        MULTISIG_OPERATION_CONFIRMED_TOPIC,
+        &MultisigOperationConfirmed {
+            id: [1u8; 32],
+            authorizer: principal_value(2),
+            confirmations: 2,
+            threshold: 2,
+            deadline: 10,
+        },
+    );
+    assert_event_decodes(
+        multisig,
+        MULTISIG_OPERATION_EXECUTED_TOPIC,
+        &MultisigOperationExecuted {
+            id: [1u8; 32],
+            success: true,
+            return_data: vec![9],
+            error: None,
+        },
+    );
+    assert_event_decodes(
+        multisig,
+        MULTISIG_OPERATION_CANCELLED_TOPIC,
+        &MultisigOperationCancelled {
+            id: [1u8; 32],
+            signers: vec![principal_value(1), principal_value(2)],
+        },
+    );
+    assert_event_decodes(
+        multisig,
+        MULTISIG_AUTHORITY_UPDATED_TOPIC,
+        &MultisigAuthorityUpdated {
+            previous_owners: vec![principal_value(1)],
+            previous_threshold: 1,
+            owners: vec![principal_value(1), principal_value(2)],
+            threshold: 2,
+            removed_operations: vec![[3u8; 32]],
+        },
+    );
+    assert_event_decodes(
+        multisig,
+        MULTISIG_TIME_LIMITS_UPDATED_TOPIC,
+        &MultisigTimeLimitsUpdated {
+            previous_proposal_ttl: 10,
+            previous_tombstone_ttl: 5,
+            proposal_ttl: 20,
+            tombstone_ttl: 6,
         },
     );
 
@@ -480,7 +578,7 @@ fn mutated_inputs(encoded: &[u8]) -> Vec<Vec<u8>> {
 
 fn driver_case_strategy() -> impl Strategy<Value = DriverCase> {
     (
-        0u8..4,
+        0u8..5,
         any::<u8>(),
         any::<u8>(),
         any::<u8>(),
@@ -492,6 +590,7 @@ fn driver_case_strategy() -> impl Strategy<Value = DriverCase> {
                 0 => ReferenceContract::AuthorizationCounter,
                 1 => ReferenceContract::Drc20,
                 2 => ReferenceContract::Drc721,
+                3 => ReferenceContract::MultisigController,
                 _ => ReferenceContract::ProxyCounter,
             },
             selector,
@@ -507,6 +606,7 @@ fn call_for(case: &DriverCase) -> CallSpec {
         ReferenceContract::AuthorizationCounter => auth_counter_call(case),
         ReferenceContract::Drc20 => drc20_call(case),
         ReferenceContract::Drc721 => drc721_call(case),
+        ReferenceContract::MultisigController => multisig_call(case),
         ReferenceContract::ProxyCounter => proxy_call(case),
     }
 }
@@ -783,6 +883,75 @@ fn drc721_call(case: &DriverCase) -> CallSpec {
     }
 }
 
+fn multisig_call(case: &DriverCase) -> CallSpec {
+    match case.selector % 14 {
+        0 => call(
+            "multisig_controller",
+            "init",
+            json!({
+                "config": {
+                    "owners": [principal(case.a), principal(case.b)],
+                    "threshold": 1u16,
+                    "proposal_ttl": 10u64,
+                    "tombstone_ttl": 5u64,
+                }
+            }),
+        ),
+        1 => call("multisig_controller", "owners", Value::Null),
+        2 => call("multisig_controller", "threshold", Value::Null),
+        3 => call("multisig_controller", "proposal_ttl", Value::Null),
+        4 => call("multisig_controller", "tombstone_ttl", Value::Null),
+        5 => call("multisig_controller", "nonce", nonce_query(case.a)),
+        6 => call(
+            "multisig_controller",
+            "operation_id",
+            multisig_target_json(case.a, case.b),
+        ),
+        7 => call("multisig_controller", "proposal", json!(bytes32(case.a))),
+        8 => call(
+            "multisig_controller",
+            "tombstone_expiry",
+            json!(bytes32(case.a)),
+        ),
+        9 => call(
+            "multisig_controller",
+            "propose",
+            json!({
+                "target": multisig_target_json(case.a, case.b),
+                "authorization": null,
+            }),
+        ),
+        10 => call(
+            "multisig_controller",
+            "confirm",
+            json!({"id": bytes32(case.a), "authorization": null}),
+        ),
+        11 => call(
+            "multisig_controller",
+            "cancel",
+            json!({"id": bytes32(case.a), "approvals": {"approvals": []}}),
+        ),
+        12 => call(
+            "multisig_controller",
+            "update_authority",
+            json!({
+                "owners": [principal(case.a)],
+                "threshold": 1u16,
+                "approvals": {"approvals": []},
+            }),
+        ),
+        _ => call(
+            "multisig_controller",
+            "set_time_limits",
+            json!({
+                "proposal_ttl": bounded(case.amount).saturating_add(1),
+                "tombstone_ttl": 5u64,
+                "approvals": {"approvals": []},
+            }),
+        ),
+    }
+}
+
 fn proxy_call(case: &DriverCase) -> CallSpec {
     match case.selector % 9 {
         0 => call("proxy_counter", "implementation", Value::Null),
@@ -837,6 +1006,30 @@ fn principal(seed: u8) -> Value {
     }
 }
 
+fn multisig_target_json(contract_seed: u8, salt_seed: u8) -> Value {
+    json!({
+        "call": {
+            "contract": hex_bytes(contract_seed, 32),
+            "fn_name": "set_value",
+            "fn_args": "",
+        },
+        "salt": bytes32(salt_seed),
+    })
+}
+
+fn multisig_target(
+    contract_seed: u8,
+    function: &str,
+    args: Vec<u8>,
+    salt: [u8; 32],
+) -> MultisigTarget {
+    MultisigTarget {
+        call: ContractCall::new(contract_id(contract_seed), function)
+            .with_raw_args(args),
+        salt,
+    }
+}
+
 fn royalty(seed: u8, amount: u64) -> Value {
     json!({
         "receiver": principal(seed),
@@ -878,6 +1071,16 @@ fn bytes193_array(seed: u8) -> [u8; 193] {
         *byte = seed.wrapping_add(index as u8);
     }
     bytes
+}
+
+fn hex_bytes(seed: u8, len: usize) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(len * 2);
+    for byte in (0..len).map(|index| seed.wrapping_add(index as u8)) {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 fn bounded(value: u64) -> u64 {

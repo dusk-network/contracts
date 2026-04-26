@@ -13,8 +13,10 @@ use dusk_contract_standards::core::{
     ReplayGuard,
 };
 use dusk_contract_standards::governance::{
-    MultisigConfig, ThresholdMultisig, Timelock, TimelockController,
-    CANCELLER_ROLE, EXECUTOR_ROLE, PROPOSER_ROLE, TIMELOCK_ADMIN_ROLE,
+    MultisigConfig, MultisigController, MultisigControllerConfig,
+    MultisigControllerStatus, MultisigTarget, ThresholdMultisig, Timelock,
+    TimelockController, CANCELLER_ROLE, EXECUTOR_ROLE, PROPOSER_ROLE,
+    TIMELOCK_ADMIN_ROLE,
 };
 use dusk_contract_standards::proxy::{
     StateStore, UpgradeActivated, UpgradeAdmin, UpgradeCancelled,
@@ -39,6 +41,7 @@ use dusk_core::signatures::bls::{
 use dusk_core::signatures::schnorr::{
     PublicKey as SchnorrPublicKey, SecretKey as SchnorrSecretKey,
 };
+use dusk_core::transfer::data::ContractCall;
 use dusk_core::JubJubScalar;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -51,7 +54,20 @@ fn c(byte: u8) -> ContractId {
     ContractId::from_bytes([byte; 32])
 }
 
-fn assert_panics(f: impl FnOnce()) {
+fn multisig_target(
+    contract: u8,
+    function: &str,
+    args: impl AsRef<[u8]>,
+    salt: [u8; 32],
+) -> MultisigTarget {
+    MultisigTarget {
+        call: ContractCall::new(c(contract), function)
+            .with_raw_args(args.as_ref().to_vec()),
+        salt,
+    }
+}
+
+fn assert_panics<R>(f: impl FnOnce() -> R) {
     assert!(catch_unwind(AssertUnwindSafe(f)).is_err());
 }
 
@@ -446,6 +462,209 @@ fn threshold_multisig_owner_management_requires_quorum_and_is_atomic() {
     assert_eq!(multisig.threshold(), 3);
     assert_panics(|| multisig.set_threshold(&[owner_a, owner_b], 0));
     assert_eq!(multisig.threshold(), 3);
+}
+
+#[test]
+fn multisig_controller_proposes_confirms_executes_and_tombstones() {
+    let owner_a = p(130);
+    let owner_b = p(131);
+    let owner_c = p(132);
+    let outsider = p(133);
+    let id = [134u8; 32];
+    let target = multisig_target(135, "set_value", [1, 2, 3], [136u8; 32]);
+
+    let mut controller = MultisigController::new();
+    controller.init(MultisigControllerConfig {
+        owners: vec![owner_a, owner_b, owner_c],
+        threshold: 2,
+        proposal_ttl: 10,
+        tombstone_ttl: 5,
+    });
+
+    assert_panics(|| controller.confirm(id, owner_a, 0));
+    assert_panics(|| controller.propose(id, target.clone(), outsider, 0));
+    assert!(controller.proposal(id).is_none());
+
+    let proposed = controller.propose(id, target.clone(), owner_a, 0);
+    assert_eq!(proposed.status, MultisigControllerStatus::Proposed);
+    assert_eq!(proposed.confirmations, 1);
+    assert!(proposed.ready_operation.is_none());
+    assert_eq!(
+        controller.proposal(id).expect("pending").confirmations,
+        vec![owner_a]
+    );
+
+    assert_panics(|| controller.confirm(id, owner_a, 1));
+    assert_eq!(
+        controller
+            .proposal(id)
+            .expect("still pending")
+            .confirmations,
+        vec![owner_a]
+    );
+
+    let ready = controller.confirm(id, owner_b, 1);
+    assert_eq!(ready.status, MultisigControllerStatus::Ready);
+    assert_eq!(ready.confirmations, 2);
+    let operation = ready.ready_operation.expect("ready operation");
+    assert_eq!(operation.target, target);
+    assert_eq!(operation.confirmations, vec![owner_a, owner_b]);
+    assert!(controller.proposal(id).is_none());
+    assert_eq!(controller.tombstone_expiry(id), Some(6));
+
+    assert_panics(|| {
+        controller.propose(
+            id,
+            multisig_target(135, "set_value", [4], [136u8; 32]),
+            owner_c,
+            2,
+        )
+    });
+    assert_eq!(controller.tombstone_expiry(id), Some(6));
+
+    let reproposed = controller.propose(
+        id,
+        multisig_target(135, "set_value", [4], [136u8; 32]),
+        owner_c,
+        7,
+    );
+    assert_eq!(reproposed.status, MultisigControllerStatus::Proposed);
+    assert_eq!(controller.tombstone_expiry(id), None);
+}
+
+#[test]
+fn multisig_controller_expiry_cancel_and_authority_updates_are_atomic() {
+    let owner_a = p(140);
+    let owner_b = p(141);
+    let owner_c = p(142);
+    let owner_d = p(143);
+    let outsider = p(144);
+    let id_a = [145u8; 32];
+    let id_b = [146u8; 32];
+
+    let mut controller = MultisigController::new();
+    controller.init(MultisigControllerConfig {
+        owners: vec![owner_a, owner_b, owner_c],
+        threshold: 2,
+        proposal_ttl: 3,
+        tombstone_ttl: 4,
+    });
+    assert_panics(|| {
+        controller.init(MultisigControllerConfig {
+            owners: vec![owner_a, owner_b],
+            threshold: 1,
+            proposal_ttl: 1,
+            tombstone_ttl: 1,
+        });
+    });
+
+    controller.propose(
+        id_a,
+        multisig_target(147, "one", [], [148u8; 32]),
+        owner_a,
+        10,
+    );
+    assert!(controller.proposal(id_a).is_some());
+    assert_panics(|| controller.confirm(id_a, owner_b, 14));
+    assert!(controller.proposal(id_a).is_none());
+    controller.propose(
+        id_b,
+        multisig_target(149, "two", [], [150u8; 32]),
+        owner_a,
+        14,
+    );
+    assert!(controller.proposal(id_a).is_none());
+    assert!(controller.proposal(id_b).is_some());
+
+    assert_panics(|| controller.cancel(id_b, &[owner_a], 14));
+    assert!(controller.proposal(id_b).is_some());
+    let cancelled = controller.cancel(id_b, &[owner_a, owner_b], 14);
+    assert_eq!(cancelled.signers, vec![owner_a, owner_b]);
+    assert!(controller.proposal(id_b).is_none());
+
+    controller.propose(
+        id_a,
+        multisig_target(151, "three", [], [152u8; 32]),
+        owner_a,
+        15,
+    );
+    let before = controller.owners();
+    assert_panics(|| {
+        controller.update_authority(
+            &[owner_a, outsider],
+            vec![owner_a, owner_d],
+            2,
+        );
+    });
+    assert_eq!(controller.owners(), before);
+    assert!(controller.proposal(id_a).is_some());
+
+    let event = controller.update_authority(
+        &[owner_a, owner_b],
+        vec![owner_a, owner_b, owner_c, owner_d],
+        2,
+    );
+    assert_eq!(event.previous_owners, before);
+    assert_eq!(event.owners, vec![owner_a, owner_b, owner_c, owner_d]);
+    assert!(event.removed_operations.is_empty());
+    assert!(controller.proposal(id_a).is_some());
+
+    let event = controller.update_authority(
+        &[owner_a, owner_b],
+        vec![owner_a, owner_d],
+        2,
+    );
+    assert_eq!(event.removed_operations, vec![id_a]);
+    assert!(controller.proposal(id_a).is_none());
+
+    let before_ttl = controller.proposal_ttl();
+    assert_panics(|| controller.set_time_limits(&[owner_a], 0, 4));
+    assert_eq!(controller.proposal_ttl(), before_ttl);
+    let event = controller.set_time_limits(&[owner_a, owner_d], 8, 9);
+    assert_eq!(event.previous_proposal_ttl, 3);
+    assert_eq!(event.proposal_ttl, 8);
+    assert_eq!(controller.tombstone_ttl(), 9);
+}
+
+#[test]
+fn multisig_controller_rejects_bad_targets_and_config() {
+    let owner_a = p(153);
+    let owner_b = p(154);
+    let mut controller = MultisigController::new();
+
+    assert_panics(|| {
+        controller.init(MultisigControllerConfig {
+            owners: vec![owner_a, owner_b],
+            threshold: 2,
+            proposal_ttl: 0,
+            tombstone_ttl: 1,
+        });
+    });
+    assert!(!controller.is_initialized());
+
+    controller.init(MultisigControllerConfig {
+        owners: vec![owner_a, owner_b],
+        threshold: 2,
+        proposal_ttl: 1,
+        tombstone_ttl: 1,
+    });
+
+    assert_panics(|| {
+        controller.propose(
+            [155u8; 32],
+            multisig_target(0, "call", [], [156u8; 32]),
+            owner_a,
+            0,
+        );
+    });
+    assert_panics(|| {
+        controller.propose(
+            [157u8; 32],
+            multisig_target(158, "", [], [159u8; 32]),
+            owner_a,
+            0,
+        );
+    });
 }
 
 #[test]

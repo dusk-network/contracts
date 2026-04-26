@@ -104,6 +104,30 @@ impl ThresholdMultisig {
         envelope: ActionEnvelope,
         now: u64,
     ) -> Vec<Principal> {
+        let signers = self.verify_action(
+            authorizations,
+            context,
+            approvals,
+            envelope,
+            now,
+        );
+        for approval in approvals {
+            authorizations.consume_verified(approval);
+        }
+        signers
+    }
+
+    /// Verifies that the observed caller plus supplied signed approvals satisfy
+    /// the threshold for a concrete call envelope without consuming nonce or
+    /// replay state.
+    pub fn verify_action(
+        &self,
+        authorizations: &AuthorizationManager,
+        context: CallContext,
+        approvals: &[SignedAuthorization],
+        envelope: ActionEnvelope,
+        now: u64,
+    ) -> Vec<Principal> {
         self.assert_initialized();
 
         let mut signers = BTreeSet::new();
@@ -127,11 +151,6 @@ impl ThresholdMultisig {
         }
 
         self.assert_threshold_count(signers.len());
-
-        for approval in approvals {
-            authorizations.consume_verified(approval);
-        }
-
         signers.iter().copied().collect()
     }
 

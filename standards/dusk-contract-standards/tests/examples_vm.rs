@@ -7,6 +7,11 @@ use dusk_contract_standards::auth::{
     SignedAuthorization,
 };
 use dusk_contract_standards::core::{NonceDomain, Principal};
+use dusk_contract_standards::governance::{
+    MultisigControllerConfig, MultisigOperationExecuted, MultisigOperationId,
+    MultisigPendingOperation, MultisigTarget,
+    MULTISIG_OPERATION_EXECUTED_TOPIC,
+};
 use dusk_contract_standards::token::drc20::{
     Allowance, BalanceOf as BalanceOf20, Init as Init20, InitBalance,
     SignedApproveCall, TransferCall as TransferCall20,
@@ -25,6 +30,7 @@ use dusk_core::signatures::bls::{
 use dusk_core::signatures::schnorr::{
     PublicKey as SchnorrPublicKey, SecretKey as SchnorrSecretKey,
 };
+use dusk_core::transfer::data::ContractCall;
 use dusk_core::JubJubScalar;
 use dusk_vm::host_queries;
 use dusk_vm::{ContractData, Session, VM};
@@ -53,6 +59,9 @@ const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
 const NFT_SIGNED_APPROVAL_FOR_ALL_ACTION: [u8; 32] = [31u8; 32];
 const PROXY_ADMIN_DOMAIN: NonceDomain = [31u8; 32];
 const SET_PROXY_VALUE_ACTION: [u8; 32] = [32u8; 32];
+const MULTISIG_CONTROLLER_DOMAIN: NonceDomain = [41u8; 32];
+const MULTISIG_PROPOSE_ACTION: [u8; 32] = [42u8; 32];
+const MULTISIG_CONFIRM_ACTION: [u8; 32] = [43u8; 32];
 
 #[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[archive_attr(derive(CheckBytes))]
@@ -144,6 +153,26 @@ struct ProxyCounterInit {
 #[archive_attr(derive(CheckBytes))]
 struct ProxySetValue {
     value: u64,
+    authorization: Option<SignedAuthorization>,
+}
+
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[archive_attr(derive(CheckBytes))]
+struct MultisigInit {
+    config: MultisigControllerConfig,
+}
+
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[archive_attr(derive(CheckBytes))]
+struct MultisigPropose {
+    target: MultisigTarget,
+    authorization: Option<SignedAuthorization>,
+}
+
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[archive_attr(derive(CheckBytes))]
+struct MultisigConfirm {
+    id: MultisigOperationId,
     authorization: Option<SignedAuthorization>,
 }
 
@@ -312,6 +341,40 @@ fn wasm_examples_deploy_and_answer_queries() {
         )
         .is_err());
     exercise_proxy_signed_admin_call(&mut session, proxy, admin);
+
+    let multisig_owner_a = phoenix_principal(8);
+    let multisig_owner_b = phoenix_principal(9);
+    let multisig = deploy(
+        &mut session,
+        "multisig_controller.wasm",
+        [23u8; 32],
+        &MultisigInit {
+            config: MultisigControllerConfig {
+                owners: vec![multisig_owner_a, multisig_owner_b],
+                threshold: 2,
+                proposal_ttl: 10,
+                tombstone_ttl: 6,
+            },
+        },
+    );
+    let governed_proxy = deploy(
+        &mut session,
+        "proxy_counter.wasm",
+        [24u8; 32],
+        &ProxyCounterInit {
+            admin: Principal::contract(multisig),
+            implementation: ContractId::from_bytes([101u8; 32]),
+            upgrade_delay: 0,
+            rollback_window: 10,
+        },
+    );
+    exercise_multisig_controller_admin_call(
+        &mut session,
+        multisig,
+        governed_proxy,
+        multisig_owner_a,
+        multisig_owner_b,
+    );
 }
 
 fn exercise_drc20_signed_calls(
@@ -1795,6 +1858,213 @@ fn exercise_proxy_signed_admin_call(
     assert_contract_nonce(session, contract, admin, PROXY_ADMIN_DOMAIN, 1);
 }
 
+fn exercise_multisig_controller_admin_call(
+    session: &mut Session,
+    multisig: ContractId,
+    proxy: ContractId,
+    owner_a: Principal,
+    owner_b: Principal,
+) {
+    let mut rng = StdRng::seed_from_u64(5555);
+    let owner_a_sk = SchnorrSecretKey::from(JubJubScalar::from(8u64));
+    let owner_a_pk = SchnorrPublicKey::from(&owner_a_sk);
+    let owner_b_sk = SchnorrSecretKey::from(JubJubScalar::from(9u64));
+    let owner_b_pk = SchnorrPublicKey::from(&owner_b_sk);
+    assert_eq!(owner_a, Principal::phoenix_public_key(&owner_a_pk));
+    assert_eq!(owner_b, Principal::phoenix_public_key(&owner_b_pk));
+
+    let target = proxy_set_value_target(proxy, 77, [1u8; 32]);
+    let id: MultisigOperationId = session
+        .call(multisig, "operation_id", &target, GAS_LIMIT)
+        .expect("compute multisig operation id")
+        .data;
+
+    let propose_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_a_sk,
+        owner_a_pk,
+        authorized_action(
+            multisig,
+            owner_a,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_PROPOSE_ACTION,
+            0,
+            0,
+            id,
+        ),
+    ));
+    let returned: Vec<u8> = session
+        .call(
+            multisig,
+            "propose",
+            &MultisigPropose {
+                target: target.clone(),
+                authorization: Some(propose_auth),
+            },
+            GAS_LIMIT,
+        )
+        .expect("propose multisig operation")
+        .data;
+    assert!(returned.is_empty());
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_a,
+        MULTISIG_CONTROLLER_DOMAIN,
+        1,
+    );
+    let pending: Option<MultisigPendingOperation> = session
+        .call(multisig, "proposal", &id, GAS_LIMIT)
+        .expect("query pending multisig operation")
+        .data;
+    assert_eq!(pending.expect("pending").confirmations, vec![owner_a]);
+    assert_proxy_value(session, proxy, 0);
+
+    let duplicate_confirm = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_a_sk,
+        owner_a_pk,
+        authorized_action(
+            multisig,
+            owner_a,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_CONFIRM_ACTION,
+            1,
+            0,
+            id,
+        ),
+    ));
+    assert!(session
+        .call::<_, Vec<u8>>(
+            multisig,
+            "confirm",
+            &MultisigConfirm {
+                id,
+                authorization: Some(duplicate_confirm),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_a,
+        MULTISIG_CONTROLLER_DOMAIN,
+        1,
+    );
+
+    let wrong_payload = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_b_sk,
+        owner_b_pk,
+        authorized_action(
+            multisig,
+            owner_b,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_CONFIRM_ACTION,
+            0,
+            0,
+            [0xee; 32],
+        ),
+    ));
+    assert!(session
+        .call::<_, Vec<u8>>(
+            multisig,
+            "confirm",
+            &MultisigConfirm {
+                id,
+                authorization: Some(wrong_payload),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_b,
+        MULTISIG_CONTROLLER_DOMAIN,
+        0,
+    );
+
+    let confirm_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_b_sk,
+        owner_b_pk,
+        authorized_action(
+            multisig,
+            owner_b,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_CONFIRM_ACTION,
+            0,
+            0,
+            id,
+        ),
+    ));
+    let receipt = session
+        .call::<_, Vec<u8>>(
+            multisig,
+            "confirm",
+            &MultisigConfirm {
+                id,
+                authorization: Some(confirm_auth.clone()),
+            },
+            GAS_LIMIT,
+        )
+        .expect("confirm and execute multisig operation");
+    let execution = receipt
+        .events
+        .iter()
+        .find(|event| event.topic == MULTISIG_OPERATION_EXECUTED_TOPIC)
+        .map(|event| {
+            rkyv::from_bytes::<MultisigOperationExecuted>(&event.data)
+                .expect("decode multisig execution event")
+        })
+        .expect("multisig execution event");
+    assert!(
+        execution.success,
+        "multisig target execution failed: {:?}",
+        execution.error
+    );
+    assert_proxy_value(session, proxy, 77);
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_b,
+        MULTISIG_CONTROLLER_DOMAIN,
+        1,
+    );
+    let pending: Option<MultisigPendingOperation> = session
+        .call(multisig, "proposal", &id, GAS_LIMIT)
+        .expect("query executed multisig operation")
+        .data;
+    assert!(pending.is_none());
+    let tombstone: Option<u64> = session
+        .call(multisig, "tombstone_expiry", &id, GAS_LIMIT)
+        .expect("query multisig tombstone")
+        .data;
+    assert!(tombstone.is_some());
+
+    assert!(session
+        .call::<_, Vec<u8>>(
+            multisig,
+            "confirm",
+            &MultisigConfirm {
+                id,
+                authorization: Some(confirm_auth),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_b,
+        MULTISIG_CONTROLLER_DOMAIN,
+        1,
+    );
+    assert_proxy_value(session, proxy, 77);
+}
+
 fn exercise_authorization_counter_signed_calls(
     session: &mut Session,
     contract: ContractId,
@@ -2258,6 +2528,34 @@ fn assert_contract_nonce(
         .expect("query contract nonce")
         .data;
     assert_eq!(actual_nonce, nonce);
+}
+
+fn assert_proxy_value(
+    session: &mut Session,
+    contract: ContractId,
+    expected: u64,
+) {
+    let value: u64 = session
+        .call(contract, "value", &(), GAS_LIMIT)
+        .expect("query proxy value")
+        .data;
+    assert_eq!(value, expected);
+}
+
+fn proxy_set_value_target(
+    proxy: ContractId,
+    value: u64,
+    salt: [u8; 32],
+) -> MultisigTarget {
+    MultisigTarget {
+        call: ContractCall::new(proxy, "set_value")
+            .with_args(&ProxySetValue {
+                value,
+                authorization: None,
+            })
+            .expect("serialize proxy set_value args"),
+        salt,
+    }
 }
 
 fn amount_hash(amount: u64) -> [u8; 32] {

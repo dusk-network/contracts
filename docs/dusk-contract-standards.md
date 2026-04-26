@@ -16,6 +16,10 @@ the Dusk execution model, storage model, and client model.
 - `standards/examples/drc721_collection`: a Forge collection composition with
   owner control, pause control, approvals, royalties, events, and token
   metadata.
+- `standards/examples/multisig_controller`: a Forge standalone multisig
+  controller that can own/administer other contracts through a contract
+  principal, with proposals, confirmations, tombstones, typed events, and
+  Dusk-native signed owner approvals.
 - `standards/examples/proxy_counter`: a Forge upgrade-admin and state-store
   example showing how proxy-like upgrade policy can be modeled without
   pretending Dusk has EVM delegatecall semantics.
@@ -90,6 +94,15 @@ approval against the exact `ActionEnvelope` and checks distinct owner quorum
 before consuming any nonce or replay state. This lets proxy admins, token
 admins, pausers, and future governance flows require M-of-N approval instead of
 trusting one hot wallet.
+
+`MultisigController` is the standalone counterpart for DuskEVM/OZ-style ports
+where a contract expects one owner/admin principal. The multisig contract is
+assigned as that owner, owners propose and confirm a target `ContractCall`, and
+the controller performs the call after threshold. Operation ids are bound to
+chain id, controller id, target call bytes, and salt; executed operations are
+tombstoned to avoid accidental replay. Failed target execution emits a typed
+execution event and consumes the proposal, so clients should use a new salt for
+an intentional retry.
 
 ## Client Signing Flow
 
@@ -177,13 +190,14 @@ cargo build --release --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
+  -p multisig-controller \
   -p proxy-counter \
-  --features authorization-counter/data-driver-js,drc20-roles-pausable/data-driver-js,drc721-collection/data-driver-js,proxy-counter/data-driver-js
+  --features authorization-counter/data-driver-js,drc20-roles-pausable/data-driver-js,drc721-collection/data-driver-js,multisig-controller/data-driver-js,proxy-counter/data-driver-js
 ```
 
 The generated data-drivers export `init`, `get_schema`, `encode_input_fn`,
 `decode_output_fn`, and `decode_event`. The example Makefiles expose this as
-`make wasm-dd`, and the top-level `make standards-data-drivers` builds all four.
+`make wasm-dd`, and the top-level `make standards-data-drivers` builds all five.
 
 ## Validation
 
@@ -202,6 +216,9 @@ The native test suite covers positive and negative paths for:
 - threshold multisig authorization, duplicate signer rejection, observed
   Moonlight/contract approval, Phoenix signed approval, and threshold-gated
   owner/threshold maintenance;
+- standalone multisig controller proposal, confirmation, duplicate-confirmation
+  rejection, expiry cleanup, cancellation, tombstoning, authority updates, and
+  proxy-as-owner VM execution;
 - timelock scheduling, cancellation, execution, and invalid states;
 - role-gated timelock controller flows, including self-governed delay updates;
 - reentrancy guard behavior;
@@ -222,13 +239,14 @@ against independent models and assert that rejected operations leave native
 state unchanged. See `docs/dusk-contract-standards-hardening.md` for the
 current hardening track.
 
-The ignored VM test deploys all four Wasm examples, checks positive query
+The ignored VM test deploys all five Wasm examples, checks positive query
 paths, performs real Moonlight and Phoenix signed calls against the
 authorization counter, covers replay/wrong-payload/wrong-signature/wrong-target
 failures, submits signed DRC20 mint and signed DRC20 approvals, verifies paused
 DRC20/DRC721 signed mint rejection without nonce movement, submits signed
 DRC721 owner actions and signed DRC721 approvals, submits a signed proxy admin
-call, covers replay/wrong-payload failures for those reference flows, and calls
+call, executes a proxy admin call through the standalone multisig controller,
+covers replay/wrong-payload failures for those reference flows, and calls
 privileged functions without a runtime caller to validate the negative
 authorization path at the VM boundary.
 
@@ -245,8 +263,9 @@ cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
+  -p multisig-controller \
   -p proxy-counter \
-  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,proxy-counter/contract
+  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,multisig-controller/contract,proxy-counter/contract
 ```
 
 After the Wasm build, run the VM deployment/query test with:
@@ -271,7 +290,7 @@ RUSK_WALLET_BIN=/path/to/rusk-wallet \
 
 The script first runs the native suite, builds Wasm, runs the VM deployment
 test, serializes deploy-time init arguments using the Dusk ABI serializer,
-deploys the four example contracts with `rusk-wallet`, and queries one
+deploys the five example contracts with `rusk-wallet`, and queries one
 exported function from each deployment. `WALLET_DIR` should point at a funded
 local wallet profile.
 

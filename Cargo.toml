@@ -5,6 +5,7 @@ members = [
     "standards/examples/authorization_counter",
     "standards/examples/drc20_roles_pausable",
     "standards/examples/drc721_collection",
+    "standards/examples/multisig_controller",
     "standards/examples/proxy_counter",
 
     # Test contracts

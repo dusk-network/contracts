@@ -26,8 +26,9 @@ cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
+  -p multisig-controller \
   -p proxy-counter \
-  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,proxy-counter/contract
+  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,multisig-controller/contract,proxy-counter/contract
 
 echo "Running VM reference deployment tests"
 cargo test -p dusk-contract-standards --test examples_vm -- --ignored
