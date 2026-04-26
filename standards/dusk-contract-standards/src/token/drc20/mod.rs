@@ -147,7 +147,7 @@ impl Drc20 {
         args: ApproveCall,
     ) -> Approval {
         self.assert_initialized();
-        if args.spender.is_zero() {
+        if owner.is_zero() || args.spender.is_zero() {
             panic!("{}", error::ZERO_PRINCIPAL);
         }
         self.allowances.insert((owner, args.spender), args.amount);
@@ -165,7 +165,7 @@ impl Drc20 {
         args: IncreaseAllowanceCall,
     ) -> Approval {
         self.assert_initialized();
-        if args.spender.is_zero() {
+        if caller.is_zero() || args.spender.is_zero() {
             panic!("{}", error::ZERO_PRINCIPAL);
         }
         let current = self.allowance(Allowance {
@@ -190,6 +190,9 @@ impl Drc20 {
         args: DecreaseAllowanceCall,
     ) -> Approval {
         self.assert_initialized();
+        if caller.is_zero() || args.spender.is_zero() {
+            panic!("{}", error::ZERO_PRINCIPAL);
+        }
         let current = self.allowance(Allowance {
             owner: caller,
             spender: args.spender,
@@ -213,6 +216,10 @@ impl Drc20 {
         args: TransferFromCall,
     ) -> Transfer {
         self.assert_initialized();
+        if caller.is_zero() {
+            panic!("{}", error::ZERO_PRINCIPAL);
+        }
+        self.assert_can_transfer(args.owner, args.to, args.amount);
         let current = self.allowance(Allowance {
             owner: args.owner,
             spender: caller,
@@ -257,16 +264,26 @@ impl Drc20 {
         if to.is_zero() {
             panic!("{}", error::ZERO_PRINCIPAL);
         }
-        let bal = self.balances.entry(to).or_insert(0);
-        *bal = bal.checked_add(amount).expect(error::OVERFLOW);
-        self.supply = self.supply.checked_add(amount).expect(error::OVERFLOW);
+        let current = self.balances.get(&to).copied().unwrap_or(0);
+        let next = current.checked_add(amount).expect(error::OVERFLOW);
+        let supply = self.supply.checked_add(amount).expect(error::OVERFLOW);
+        if next == 0 {
+            self.balances.remove(&to);
+        } else {
+            self.balances.insert(to, next);
+        }
+        self.supply = supply;
     }
 
     fn burn_internal(&mut self, from: Principal, amount: u64) {
+        if from.is_zero() {
+            panic!("{}", error::ZERO_PRINCIPAL);
+        }
         let current = self.balances.get(&from).copied().unwrap_or(0);
         if current < amount {
             panic!("DRC20: balance too low");
         }
+        let supply = self.supply.checked_sub(amount).expect(error::UNDERFLOW);
         if amount != 0 {
             let next = current - amount;
             if next == 0 {
@@ -274,8 +291,7 @@ impl Drc20 {
             } else {
                 self.balances.insert(from, next);
             }
-            self.supply =
-                self.supply.checked_sub(amount).expect(error::UNDERFLOW);
+            self.supply = supply;
         }
     }
 
@@ -285,6 +301,28 @@ impl Drc20 {
         to: Principal,
         amount: u64,
     ) -> Transfer {
+        self.assert_can_transfer(from, to, amount);
+        if amount != 0 {
+            if from == to {
+                return Transfer { from, to, amount };
+            }
+            let current = self.balances.get(&from).copied().unwrap_or(0);
+            let next = current - amount;
+            if next == 0 {
+                self.balances.remove(&from);
+            } else {
+                self.balances.insert(from, next);
+            }
+            let to_balance = self.balances.get(&to).copied().unwrap_or(0);
+            self.balances.insert(to, to_balance + amount);
+        }
+        Transfer { from, to, amount }
+    }
+
+    fn assert_can_transfer(&self, from: Principal, to: Principal, amount: u64) {
+        if from.is_zero() {
+            panic!("{}", error::ZERO_PRINCIPAL);
+        }
         if to.is_zero() {
             panic!("{}", error::ZERO_PRINCIPAL);
         }
@@ -292,18 +330,10 @@ impl Drc20 {
         if current < amount {
             panic!("DRC20: balance too low");
         }
-        if amount != 0 {
-            let next = current - amount;
-            if next == 0 {
-                self.balances.remove(&from);
-            } else {
-                self.balances.insert(from, next);
-            }
-            let to_balance = self.balances.entry(to).or_insert(0);
-            *to_balance =
-                to_balance.checked_add(amount).expect(error::OVERFLOW);
+        if from != to {
+            let to_balance = self.balances.get(&to).copied().unwrap_or(0);
+            to_balance.checked_add(amount).expect(error::OVERFLOW);
         }
-        Transfer { from, to, amount }
     }
 }
 

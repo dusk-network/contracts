@@ -238,6 +238,9 @@ impl Drc721 {
         args: SetApprovalForAllCall,
     ) -> ApprovalForAll {
         self.assert_initialized();
+        if caller.is_zero() {
+            panic!("{}", error::ZERO_PRINCIPAL);
+        }
         if args.operator.is_zero() {
             panic!("{}", error::ZERO_PRINCIPAL);
         }

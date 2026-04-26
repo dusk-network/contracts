@@ -547,6 +547,76 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
 }
 
 #[test]
+fn failed_owner_role_and_admin_signed_checks_do_not_consume_nonce() {
+    let signer_sk = moonlight_secret(70);
+    let signer_pk = BlsPublicKey::from(&signer_sk);
+    let signer = Principal::moonlight(&signer_pk);
+    let owner = p(71);
+    let admin = p(72);
+    let contract = c(73);
+    let implementation = c(74);
+    let role = [75u8; 32];
+    let domain = [76u8; 32];
+    let action_id = [77u8; 32];
+    let payload_hash = [78u8; 32];
+    let envelope =
+        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let action = AuthorizedAction {
+        contract,
+        domain,
+        action_id,
+        nonce: 0,
+        expires_at: 0,
+        principal: signer,
+        payload_hash,
+    };
+    let signed = SignedAuthorization::Moonlight(MoonlightAuthorization {
+        action,
+        public_key: signer_pk,
+        signature: signer_sk.sign(&action.message_bytes()),
+    });
+
+    let mut manager = AuthorizationManager::new();
+    assert_panics(|| {
+        manager.authorize_principal_action(
+            owner,
+            CallContext::none(),
+            Some(&signed),
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(signer, domain), 0);
+
+    let mut access = AccessControl::new();
+    access.init_admin(admin);
+    access.grant_role(admin, role, owner);
+    assert_panics(|| {
+        access.authorize_role_action(
+            role,
+            &mut manager,
+            CallContext::none(),
+            Some(&signed),
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(signer, domain), 0);
+
+    let upgrades = UpgradeAdmin::new(admin, implementation, 0, 0);
+    assert_panics(|| {
+        upgrades.authorize_admin_action(
+            &mut manager,
+            CallContext::none(),
+            Some(&signed),
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(signer, domain), 0);
+}
+
+#[test]
 fn reentrancy_guard_blocks_nested_entry() {
     let mut guard = ReentrancyGuard::new();
     guard.enter();
@@ -843,6 +913,91 @@ fn drc20_supports_transfer_allowance_mint_and_burn() {
             },
         );
     });
+}
+
+#[test]
+fn drc20_failed_operations_do_not_leave_partial_state() {
+    let owner = p(1);
+    let receiver = p(2);
+    let spender = p(3);
+    let zero = p(0);
+
+    let mut token = Drc20::new();
+    token.init(Init20 {
+        name: "Dusk Token".into(),
+        symbol: "DUSKX".into(),
+        decimals: 9,
+        initial_balances: vec![InitBalance {
+            account: owner,
+            amount: 10,
+        }],
+    });
+    token.approve(owner, ApproveCall { spender, amount: 7 });
+    assert_panics(|| {
+        token.transfer_from(
+            spender,
+            TransferFromCall {
+                owner,
+                to: zero,
+                amount: 3,
+            },
+        );
+    });
+    assert_eq!(
+        token.allowance(Allowance { owner, spender }),
+        7,
+        "zero-recipient transfer_from must not spend allowance"
+    );
+    assert_eq!(token.balance_of(BalanceOf20 { account: owner }), 10);
+
+    let empty_owner = p(4);
+    token.approve_for(empty_owner, ApproveCall { spender, amount: 7 });
+    assert_panics(|| {
+        token.transfer_from(
+            spender,
+            TransferFromCall {
+                owner: empty_owner,
+                to: receiver,
+                amount: 3,
+            },
+        );
+    });
+    assert_eq!(
+        token.allowance(Allowance {
+            owner: empty_owner,
+            spender,
+        }),
+        7,
+        "failed transfer_from must not spend allowance before balance checks"
+    );
+    assert_eq!(token.balance_of(BalanceOf20 { account: receiver }), 0);
+
+    let mut max_supply = Drc20::new();
+    max_supply.init(Init20 {
+        name: "Max".into(),
+        symbol: "MAX".into(),
+        decimals: 9,
+        initial_balances: vec![InitBalance {
+            account: owner,
+            amount: u64::MAX,
+        }],
+    });
+    max_supply.transfer(
+        owner,
+        Transfer20 {
+            to: owner,
+            amount: 1,
+        },
+    );
+    assert_eq!(
+        max_supply.balance_of(BalanceOf20 { account: owner }),
+        u64::MAX
+    );
+    assert_panics(|| {
+        max_supply.mint(receiver, 1);
+    });
+    assert_eq!(max_supply.total_supply(), u64::MAX);
+    assert_eq!(max_supply.balance_of(BalanceOf20 { account: receiver }), 0);
 }
 
 #[test]

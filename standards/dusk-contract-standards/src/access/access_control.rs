@@ -101,9 +101,9 @@ impl AccessControl {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        let principal = authorizer.require_signed(authorization);
-        self.assert_role(role, principal);
-        principal
+        authorizer.require_signed_if(authorization, |principal| {
+            self.has_role(role, principal)
+        })
     }
 
     /// Authorizes any principal with `role` through runtime context or an
@@ -143,10 +143,11 @@ impl AccessControl {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        let principal =
-            authorizer.require_signed_action(authorization, envelope);
-        self.assert_role(role, principal);
-        principal
+        authorizer.require_signed_action_if(
+            authorization,
+            envelope,
+            |principal| self.has_role(role, principal),
+        )
     }
 
     /// Returns a role's admin role.

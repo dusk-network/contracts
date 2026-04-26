@@ -294,6 +294,22 @@ impl<'a> Authorizer<'a> {
             .authorize_signed(authorization, self.now)
     }
 
+    /// Verifies a signed authorization, applies an authorization predicate,
+    /// and only then consumes nonce/replay state.
+    pub fn require_signed_if(
+        &mut self,
+        authorization: &SignedAuthorization,
+        is_authorized: impl FnOnce(Principal) -> bool,
+    ) -> Principal {
+        let principal =
+            self.authorizations.verify_signed(authorization, self.now);
+        if !is_authorized(principal) {
+            panic!("{}", error::UNAUTHORIZED);
+        }
+        self.authorizations.consume_verified(authorization);
+        principal
+    }
+
     /// Verifies a signed authorization for an exact call envelope and consumes
     /// its nonce/replay state.
     pub fn require_signed_action(
@@ -306,6 +322,26 @@ impl<'a> Authorizer<'a> {
             envelope,
             self.now,
         )
+    }
+
+    /// Verifies a signed authorization for an exact call envelope, applies an
+    /// authorization predicate, and only then consumes nonce/replay state.
+    pub fn require_signed_action_if(
+        &mut self,
+        authorization: &SignedAuthorization,
+        envelope: ActionEnvelope,
+        is_authorized: impl FnOnce(Principal) -> bool,
+    ) -> Principal {
+        let principal = self.authorizations.verify_signed_action(
+            authorization,
+            envelope,
+            self.now,
+        );
+        if !is_authorized(principal) {
+            panic!("{}", error::UNAUTHORIZED);
+        }
+        self.authorizations.consume_verified(authorization);
+        principal
     }
 }
 
@@ -360,10 +396,11 @@ impl AuthorizationManager {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        let principal = self.authorize_signed(authorization, now);
+        let principal = self.verify_signed(authorization, now);
         if principal != expected {
             panic!("{}", error::UNAUTHORIZED);
         }
+        self.consume_verified(authorization);
         principal
     }
 
@@ -389,11 +426,11 @@ impl AuthorizationManager {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        let principal =
-            self.authorize_signed_action(authorization, envelope, now);
+        let principal = self.verify_signed_action(authorization, envelope, now);
         if principal != expected {
             panic!("{}", error::UNAUTHORIZED);
         }
+        self.consume_verified(authorization);
         principal
     }
 
@@ -407,14 +444,9 @@ impl AuthorizationManager {
         authorization: &SignedAuthorization,
         now: u64,
     ) -> Principal {
-        match authorization {
-            SignedAuthorization::Moonlight(auth) => {
-                self.authorize_moonlight(auth, now)
-            }
-            SignedAuthorization::Phoenix(auth) => {
-                self.authorize_phoenix(auth, now)
-            }
-        }
+        let principal = self.verify_signed(authorization, now);
+        self.consume_verified(authorization);
+        principal
     }
 
     /// Verifies a signed authorization for an exact call envelope and consumes
@@ -425,13 +457,53 @@ impl AuthorizationManager {
         envelope: ActionEnvelope,
         now: u64,
     ) -> Principal {
+        let principal = self.verify_signed_action(authorization, envelope, now);
+        self.consume_verified(authorization);
+        principal
+    }
+
+    /// Verifies a signed authorization without consuming nonce/replay state.
+    fn verify_signed(
+        &self,
+        authorization: &SignedAuthorization,
+        now: u64,
+    ) -> Principal {
+        match authorization {
+            SignedAuthorization::Moonlight(auth) => {
+                self.verify_moonlight(auth, now)
+            }
+            SignedAuthorization::Phoenix(auth) => {
+                self.verify_phoenix(auth, now)
+            }
+        }
+    }
+
+    /// Verifies a signed authorization for an exact call envelope without
+    /// consuming nonce/replay state.
+    fn verify_signed_action(
+        &self,
+        authorization: &SignedAuthorization,
+        envelope: ActionEnvelope,
+        now: u64,
+    ) -> Principal {
         authorization.assert_envelope(envelope);
-        self.authorize_signed(authorization, now)
+        self.verify_signed(authorization, now)
     }
 
     /// Verifies and consumes a Moonlight BLS authorization.
     pub fn authorize_moonlight(
         &mut self,
+        auth: &MoonlightAuthorization,
+        now: u64,
+    ) -> Principal {
+        let principal = self.verify_moonlight(auth, now);
+        self.consume_action(principal, auth.action.domain, auth.action.nonce);
+        principal
+    }
+
+    /// Verifies a Moonlight BLS authorization without consuming nonce state.
+    fn verify_moonlight(
+        &self,
         auth: &MoonlightAuthorization,
         now: u64,
     ) -> Principal {
@@ -444,14 +516,28 @@ impl AuthorizationManager {
         if !verify_bls(&message, &auth.public_key, &auth.signature) {
             panic!("{}", error::UNAUTHORIZED);
         }
-        self.nonces
-            .consume(principal, auth.action.domain, auth.action.nonce);
+        self.assert_nonce(principal, auth.action.domain, auth.action.nonce);
         principal
     }
 
     /// Verifies and consumes a Phoenix authorization.
     pub fn authorize_phoenix(
         &mut self,
+        auth: &PhoenixSignatureAuthorization,
+        now: u64,
+    ) -> Principal {
+        let principal = self.verify_phoenix(auth, now);
+        self.consume_action(principal, auth.action.domain, auth.action.nonce);
+        if let Some(key) = auth.replay_key {
+            self.replays.consume(principal, key);
+        }
+        principal
+    }
+
+    /// Verifies a Phoenix Schnorr authorization without consuming nonce/replay
+    /// state.
+    fn verify_phoenix(
+        &self,
         auth: &PhoenixSignatureAuthorization,
         now: u64,
     ) -> Principal {
@@ -472,11 +558,7 @@ impl AuthorizationManager {
                 panic!("{}", error::REPLAY);
             }
         }
-        self.nonces
-            .consume(principal, auth.action.domain, auth.action.nonce);
-        if let Some(key) = auth.replay_key {
-            self.replays.consume(principal, key);
-        }
+        self.assert_nonce(principal, auth.action.domain, auth.action.nonce);
         principal
     }
 
@@ -504,6 +586,36 @@ impl AuthorizationManager {
         entries: impl IntoIterator<Item = ReplayEntry>,
     ) {
         self.replays.import_entries(entries);
+    }
+
+    fn assert_nonce(
+        &self,
+        principal: Principal,
+        domain: NonceDomain,
+        expected: u64,
+    ) {
+        if self.nonces.current(principal, domain) != expected {
+            panic!("{}", error::INVALID_NONCE);
+        }
+    }
+
+    fn consume_verified(&mut self, authorization: &SignedAuthorization) {
+        let action = authorization.action();
+        self.consume_action(action.principal, action.domain, action.nonce);
+        if let SignedAuthorization::Phoenix(auth) = authorization {
+            if let Some(key) = auth.replay_key {
+                self.replays.consume(action.principal, key);
+            }
+        }
+    }
+
+    fn consume_action(
+        &mut self,
+        principal: Principal,
+        domain: NonceDomain,
+        nonce: u64,
+    ) {
+        self.nonces.consume(principal, domain, nonce);
     }
 }
 
