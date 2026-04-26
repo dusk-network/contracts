@@ -2,9 +2,22 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+use dusk_contract_standards::access::events as access_events;
+use dusk_contract_standards::core::Principal;
+use dusk_contract_standards::proxy::{
+    RollbackFinalized, UpgradeActivated, UpgradeCancelled, UpgradePrepared,
+    UpgradeRolledBack, ROLLBACK_FINALIZED_TOPIC, UPGRADE_ACTIVATED_TOPIC,
+    UPGRADE_CANCELLED_TOPIC, UPGRADE_PREPARED_TOPIC, UPGRADE_ROLLED_BACK_TOPIC,
+};
+use dusk_contract_standards::token::drc20::events as drc20_events;
+use dusk_contract_standards::token::drc721::{
+    events as drc721_events, RoyaltyQuote,
+};
+use dusk_core::abi::ContractId;
 use dusk_data_driver::reader::DriverReader;
 use proptest::prelude::*;
 use proptest::test_runner::{Config as ProptestConfig, TestRunner};
+use rkyv::ser::serializers::AllocSerializer;
 use serde_json::{json, Value};
 
 const DRIVER_NAMES: [&str; 4] = [
@@ -80,6 +93,160 @@ fn data_driver_inputs_roundtrip_and_reject_bad_shapes() {
             Ok(())
         })
         .expect("data-driver fuzz cases failed");
+}
+
+#[test]
+#[ignore = "requires `make standards-data-drivers` before running"]
+fn data_driver_outputs_and_events_decode() {
+    let drivers = load_drivers();
+
+    assert_output_decodes(
+        drivers.get("authorization_counter").unwrap(),
+        "value",
+        &42u64,
+    );
+    assert_output_decodes(
+        drivers.get("authorization_counter").unwrap(),
+        "last_authorizer",
+        &Some(principal_value(1)),
+    );
+
+    let drc20 = drivers.get("drc20_roles_pausable").unwrap();
+    assert_output_decodes(drc20, "name", &"Audit Token".to_string());
+    assert_output_decodes(drc20, "decimals", &9u8);
+    assert_output_decodes(drc20, "total_supply", &1_000u64);
+    assert_output_decodes(drc20, "has_role", &true);
+    assert_output_decodes(drc20, "paused", &false);
+    assert_event_decodes(
+        drc20,
+        drc20_events::TRANSFER_TOPIC,
+        &drc20_events::Transfer {
+            from: principal_value(1),
+            to: principal_value(2),
+            amount: 7,
+        },
+    );
+    assert_event_decodes(
+        drc20,
+        drc20_events::APPROVAL_TOPIC,
+        &drc20_events::Approval {
+            owner: principal_value(1),
+            spender: principal_value(2),
+            amount: 7,
+        },
+    );
+    assert_event_decodes(
+        drc20,
+        access_events::PAUSED_TOPIC,
+        &access_events::Paused {
+            account: principal_value(1),
+        },
+    );
+    assert_event_decodes(
+        drc20,
+        access_events::ROLE_GRANTED_TOPIC,
+        &access_events::RoleGranted {
+            role: [3u8; 32],
+            account: principal_value(1),
+            sender: principal_value(2),
+        },
+    );
+
+    let drc721 = drivers.get("drc721_collection").unwrap();
+    assert_output_decodes(drc721, "base_uri", &"ipfs://audit/".to_string());
+    assert_output_decodes(drc721, "tokens_of", &vec![1u64, 2, 3]);
+    assert_output_decodes(drc721, "owner_of", &principal_value(1));
+    assert_output_decodes(
+        drc721,
+        "royalty_info",
+        &RoyaltyQuote {
+            receiver: principal_value(2),
+            amount: 50,
+        },
+    );
+    assert_event_decodes(
+        drc721,
+        drc721_events::TRANSFER_TOPIC,
+        &drc721_events::Transfer {
+            from: principal_value(1),
+            to: principal_value(2),
+            token_id: 9,
+        },
+    );
+    assert_event_decodes(
+        drc721,
+        drc721_events::APPROVAL_FOR_ALL_TOPIC,
+        &drc721_events::ApprovalForAll {
+            owner: principal_value(1),
+            operator: principal_value(2),
+            approved: true,
+        },
+    );
+    assert_event_decodes(
+        drc721,
+        drc721_events::TOKEN_ROYALTY_SET_TOPIC,
+        &drc721_events::TokenRoyaltySet {
+            operator: principal_value(1),
+            token_id: 9,
+            receiver: principal_value(2),
+            basis_points: 500,
+        },
+    );
+
+    let proxy = drivers.get("proxy_counter").unwrap();
+    assert_output_decodes(proxy, "implementation", &contract_id(4));
+    assert_output_decodes(proxy, "rollback_deadline", &100u64);
+    assert_output_decodes(proxy, "activate_upgrade", &vec![1u8, 2, 3]);
+    assert_event_decodes(
+        proxy,
+        UPGRADE_PREPARED_TOPIC,
+        &UpgradePrepared {
+            implementation: contract_id(4),
+            eta: 10,
+        },
+    );
+    assert_event_decodes(
+        proxy,
+        UPGRADE_ACTIVATED_TOPIC,
+        &UpgradeActivated {
+            previous_implementation: contract_id(3),
+            implementation: contract_id(4),
+            rollback_deadline: 20,
+        },
+    );
+    assert_event_decodes(
+        proxy,
+        UPGRADE_CANCELLED_TOPIC,
+        &UpgradeCancelled {
+            implementation: contract_id(4),
+        },
+    );
+    assert_event_decodes(
+        proxy,
+        UPGRADE_ROLLED_BACK_TOPIC,
+        &UpgradeRolledBack {
+            from_implementation: contract_id(4),
+            restored_implementation: contract_id(3),
+        },
+    );
+    assert_event_decodes(
+        proxy,
+        ROLLBACK_FINALIZED_TOPIC,
+        &RollbackFinalized {
+            implementation: contract_id(4),
+        },
+    );
+
+    for (name, driver) in &drivers {
+        assert!(
+            driver.decode_output_fn("definitely_missing", &[]).is_err(),
+            "{name} accepted an unknown output function"
+        );
+        assert!(
+            driver.decode_event("definitely_missing", &[]).is_err(),
+            "{name} accepted an unknown event topic"
+        );
+    }
 }
 
 fn load_drivers() -> BTreeMap<&'static str, DriverReader> {
@@ -228,6 +395,61 @@ fn assert_mutated_inputs_are_handled(
     }
 
     Ok(())
+}
+
+fn assert_output_decodes<T>(driver: &DriverReader, function: &str, value: &T)
+where
+    T: rkyv::Serialize<AllocSerializer<4096>>,
+{
+    let encoded = rkyv_bytes(value);
+    driver
+        .decode_output_fn(function, &encoded)
+        .unwrap_or_else(|error| {
+            panic!("decode_output_fn({function}) failed: {error}")
+        });
+    assert_mutated_output_decode_is_handled(driver, function, &encoded);
+}
+
+fn assert_event_decodes<T>(driver: &DriverReader, topic: &str, value: &T)
+where
+    T: rkyv::Serialize<AllocSerializer<4096>>,
+{
+    let encoded = rkyv_bytes(value);
+    driver
+        .decode_event(topic, &encoded)
+        .unwrap_or_else(|error| {
+            panic!("decode_event({topic}) failed: {error}")
+        });
+    assert_mutated_event_decode_is_handled(driver, topic, &encoded);
+}
+
+fn assert_mutated_output_decode_is_handled(
+    driver: &DriverReader,
+    function: &str,
+    encoded: &[u8],
+) {
+    for mutated in mutated_inputs(encoded) {
+        let _ = driver.decode_output_fn(function, &mutated);
+    }
+}
+
+fn assert_mutated_event_decode_is_handled(
+    driver: &DriverReader,
+    topic: &str,
+    encoded: &[u8],
+) {
+    for mutated in mutated_inputs(encoded) {
+        let _ = driver.decode_event(topic, &mutated);
+    }
+}
+
+fn rkyv_bytes<T>(value: &T) -> Vec<u8>
+where
+    T: rkyv::Serialize<AllocSerializer<4096>>,
+{
+    rkyv::to_bytes::<_, 4096>(value)
+        .expect("rkyv serialization")
+        .to_vec()
 }
 
 fn mutated_inputs(encoded: &[u8]) -> Vec<Vec<u8>> {
@@ -622,12 +844,40 @@ fn royalty(seed: u8, amount: u64) -> Value {
     })
 }
 
+fn principal_value(seed: u8) -> Principal {
+    match seed % 3 {
+        0 => Principal::Phoenix(bytes32_array(seed)),
+        1 => Principal::Contract(contract_id(seed)),
+        _ => Principal::Moonlight(bytes193_array(seed)),
+    }
+}
+
+fn contract_id(seed: u8) -> ContractId {
+    ContractId::from_bytes(bytes32_array(seed))
+}
+
 fn bytes32(seed: u8) -> Vec<u8> {
     (0..32).map(|index| seed.wrapping_add(index)).collect()
 }
 
+fn bytes32_array(seed: u8) -> [u8; 32] {
+    let mut bytes = [0u8; 32];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = seed.wrapping_add(index as u8);
+    }
+    bytes
+}
+
 fn bytes193(seed: u8) -> Vec<u8> {
     (0..193).map(|index| seed.wrapping_add(index)).collect()
+}
+
+fn bytes193_array(seed: u8) -> [u8; 193] {
+    let mut bytes = [0u8; 193];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = seed.wrapping_add(index as u8);
+    }
+    bytes
 }
 
 fn bounded(value: u64) -> u64 {

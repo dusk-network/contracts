@@ -118,8 +118,9 @@ STANDARDS_PROPTEST_CASES=8192 STANDARDS_PROPTEST_MAX_SHRINK_ITERS=16384 \
 ```
 
 Forge data-driver ABI fuzzing covers JSON-to-rkyv input encoding, input
-decoding, roundtrips, malformed JSON, bad shapes, unknown functions, and
-mutated encoded payloads for the four standards reference contracts:
+decoding, roundtrips, malformed JSON, bad shapes, unknown functions, output
+decoding, typed event decoding, and mutated input/output/event payloads for the
+four standards reference contracts:
 
 ```sh
 make standards-data-drivers
@@ -129,6 +130,15 @@ STANDARDS_DATA_DRIVER_FUZZ_CASES=2048 \
 
 The `standards-hardening` workflow runs these longer property and data-driver
 fuzz jobs on demand and nightly.
+
+Run the audit-grade validation script with:
+
+```sh
+./scripts/dusk-contract-standards-audit-grade.sh
+```
+
+See `docs/dusk-contract-standards-audit.md` for the auditor-facing scope,
+threat model, invariant matrix, and residual-risk register.
 
 Run the full standards validation pass with:
 
@@ -149,7 +159,7 @@ cargo clippy -p dusk-contract-standards --all-targets -- -D warnings
 
 ## Next Research Items
 
-The next hardening layer should add mutation testing for authorization and
-pause paths, differential tests against independent client encoders, and
+The next hardening layer should add differential tests against independent
+client encoders, formal or semi-formal arithmetic/state-machine proofs, and
 local-node scenario tests that intentionally mix successful transactions with
-rejected transactions across block boundaries.
+rejected transactions across block boundaries over longer runs.

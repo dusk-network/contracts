@@ -37,6 +37,11 @@ helpers (`authorize_signed_action`, `authorize_owner_action`,
 domain, wrong action id, and wrong payload hash are rejected before nonce state
 is consumed.
 
+Payload hashes must include enough typed structure to prevent ambiguous
+concatenation. Reference contracts prefix each payload with an operation tag and
+length-prefix variable-size principal encodings before hashing. New standards
+should follow that pattern or use a canonical structured encoder.
+
 ## Pausable References
 
 The reference pausable DRC20 and DRC721 contracts pause all balance-changing
@@ -61,3 +66,9 @@ activation behind a timelock, keep a rollback window, and emit lifecycle events
 for indexers and wallets. Timelock controller maintenance, including minimum
 delay changes, should go through the timelock itself rather than a direct admin
 call.
+
+## Audit Packet
+
+`docs/dusk-contract-standards-audit.md` is the auditor-facing packet for this
+branch. It lists the exact scope, trust assumptions, invariant matrix,
+validation commands, and residual risks.
