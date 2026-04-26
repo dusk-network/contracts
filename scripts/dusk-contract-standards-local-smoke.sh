@@ -452,6 +452,97 @@ run_signed_invariants() {
   echo "Local signed invariant checks completed"
 }
 
+run_multisig_invariants() {
+  local multisig_id="$1"
+  local proxy_id="$2"
+  local expires_at="${SIGNED_EXPIRES_AT:-100000}"
+  local unit_args
+  local target_args
+  local op_id
+  local second_target_args
+  local second_op_id
+
+  unit_args="$(encode_args unit)"
+
+  assert_eq "multisig-governed proxy initial value" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 0
+
+  expect_call_rejected "multisig-governed proxy direct set without auth" \
+    "$proxy_id" set_value "$(encode_args proxy-set-no-auth 55)"
+  assert_eq "multisig-governed proxy value after direct no-auth set" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 0
+
+  expect_call_rejected "multisig-governed proxy direct owner signature" \
+    "$proxy_id" set_value "$(encode_args proxy-set "$proxy_id" 0 "$expires_at" 66)"
+  assert_eq "multisig-governed proxy owner nonce after direct signature" \
+    "$(query_u64 "$proxy_id" nonce "$(encode_args nonce proxy-admin phoenix 1)")" 0
+  assert_eq "multisig-governed proxy value after direct owner signature" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 0
+
+  target_args="$(encode_args multisig-target "$proxy_id" 77 1)"
+  op_id="$(query_hex "$multisig_id" operation_id "$target_args")"
+
+  expect_call_rejected "multisig non-owner propose" \
+    "$multisig_id" propose \
+    "$(encode_args multisig-propose "$multisig_id" "$proxy_id" 4 0 "$expires_at" 77 1 "$op_id")"
+  assert_eq "multisig non-owner nonce after rejected propose" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 4)")" 0
+
+  expect_call_ok "multisig owner one propose" \
+    "$multisig_id" propose \
+    "$(encode_args multisig-propose "$multisig_id" "$proxy_id" 1 0 "$expires_at" 77 1 "$op_id")"
+  assert_eq "multisig owner one nonce after propose" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 1)")" 1
+  assert_eq "multisig-governed proxy value after one of three" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 0
+
+  expect_call_rejected "multisig duplicate confirmation" \
+    "$multisig_id" confirm \
+    "$(encode_args multisig-confirm "$multisig_id" 1 1 "$expires_at" "$op_id")"
+  assert_eq "multisig owner one nonce after duplicate confirmation" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 1)")" 1
+
+  expect_call_rejected "multisig wrong payload confirmation" \
+    "$multisig_id" confirm \
+    "$(encode_args multisig-confirm "$multisig_id" 2 0 "$expires_at" "$op_id" bad-payload)"
+  assert_eq "multisig owner two nonce after wrong payload" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 2)")" 0
+
+  expect_call_ok "multisig owner two confirmation executes proxy" \
+    "$multisig_id" confirm \
+    "$(encode_args multisig-confirm "$multisig_id" 2 0 "$expires_at" "$op_id")"
+  assert_eq "multisig-governed proxy value after two of three" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 77
+  assert_eq "multisig owner two nonce after confirmation" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 2)")" 1
+
+  expect_call_rejected "multisig confirmation replay" \
+    "$multisig_id" confirm \
+    "$(encode_args multisig-confirm "$multisig_id" 2 0 "$expires_at" "$op_id")"
+  assert_eq "multisig owner two nonce after replay" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 2)")" 1
+
+  second_target_args="$(encode_args multisig-target "$proxy_id" 88 2)"
+  second_op_id="$(query_hex "$multisig_id" operation_id "$second_target_args")"
+  expect_call_ok "multisig second operation owner one propose" \
+    "$multisig_id" propose \
+    "$(encode_args multisig-propose "$multisig_id" "$proxy_id" 1 1 "$expires_at" 88 2 "$second_op_id")"
+  assert_eq "multisig-governed proxy value after second one of three" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 77
+  assert_eq "multisig owner one nonce after second propose" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 1)")" 2
+
+  expect_call_ok "multisig owner three confirmation executes proxy" \
+    "$multisig_id" confirm \
+    "$(encode_args multisig-confirm "$multisig_id" 3 0 "$expires_at" "$second_op_id")"
+  assert_eq "multisig-governed proxy value after owner one plus three" \
+    "$(query_u64 "$proxy_id" value "$unit_args")" 88
+  assert_eq "multisig owner three nonce after confirmation" \
+    "$(query_u64 "$multisig_id" nonce "$(encode_args nonce multisig phoenix 3)")" 1
+
+  echo "Local multisig invariant checks completed"
+}
+
 unit_args="$(encode_args unit)"
 
 auth_id="$(deploy_contract \
@@ -489,6 +580,14 @@ proxy_id="$(deploy_contract \
   "$(encode_args proxy-init)")"
 query_contract "proxy counter" "$proxy_id" "value" "$unit_args"
 
+multisig_proxy_id="$(deploy_contract \
+  "multisig-owned proxy counter" \
+  "${ROOT_DIR}/target/wasm32-unknown-unknown/release/proxy_counter.wasm" \
+  "$((DEPLOY_NONCE_BASE + 5))" \
+  "$(encode_args proxy-init-contract "$multisig_id")")"
+query_contract "multisig-owned proxy counter" "$multisig_proxy_id" "value" "$unit_args"
+
 run_signed_invariants "$auth_id" "$drc20_id" "$drc721_id" "$proxy_id"
+run_multisig_invariants "$multisig_id" "$multisig_proxy_id"
 
 echo "Local standards smoke completed"

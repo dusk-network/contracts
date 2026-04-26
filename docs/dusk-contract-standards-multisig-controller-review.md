@@ -4,12 +4,12 @@ Review date: 2026-04-27
 
 ## Scope
 
-Reviewed code:
+Reviewed code and validation:
 
 - `standards/dusk-contract-standards/src/governance/multisig_controller.rs`
 - `standards/examples/multisig_controller`
 - `standards/examples/proxy_counter`
-- multisig primitive, property, VM, and data-driver tests under
+- multisig primitive, property, VM, local-node smoke, and data-driver tests under
   `standards/dusk-contract-standards/tests`
 
 The review focused on the standalone controller pattern where a target contract
@@ -40,9 +40,9 @@ Moonlight/Phoenix/contract owners approve controller operations.
 
 No critical or high-severity issues are open from this pass.
 
-The VM test now deploys `multisig_controller` with three Phoenix owners and
-threshold `2`, then deploys `proxy_counter` with
-`Principal::Contract(multisig_controller_id)` as admin. It verifies that:
+The VM test and local-node smoke deploy `multisig_controller` with three
+Phoenix owners and threshold `2`, then deploy `proxy_counter` with
+`Principal::Contract(multisig_controller_id)` as admin. They verify that:
 
 - direct root `proxy_counter.set_value` without authorization fails;
 - a direct signed proxy-admin call from a multisig owner fails because the
@@ -102,9 +102,8 @@ proposal already exists.
   hardware-key usage, emergency procedures, and threshold choice remain
   deployment responsibilities.
 - No formal verification has been performed for the controller state machine.
-- No long-running adversarial local-node campaign has been run for this exact
-  multisig flow yet; the VM deployment test covers the deterministic contract
-  invariants.
+- The deterministic local-node smoke covers this exact multisig flow, but it is
+  not a long-running adversarial network campaign.
 
 ## Recommendation
 

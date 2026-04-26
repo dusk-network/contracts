@@ -3,12 +3,15 @@ use std::error::Error;
 use std::string::String;
 use std::vec::Vec;
 
+use bytecheck::CheckBytes;
 use dusk_contract_standards::auth::{
     AuthorizedAction, MoonlightAuthorization, PhoenixSignatureAuthorization,
     SignedAuthorization,
 };
 use dusk_contract_standards::core::Principal;
-use dusk_contract_standards::governance::MultisigControllerConfig;
+use dusk_contract_standards::governance::{
+    MultisigControllerConfig, MultisigOperationId, MultisigTarget,
+};
 use dusk_contract_standards::token::drc20::{
     Init as Drc20TokenInit, InitBalance as Drc20InitBalance,
 };
@@ -24,6 +27,7 @@ use dusk_core::signatures::bls::{
 use dusk_core::signatures::schnorr::{
     PublicKey as SchnorrPublicKey, SecretKey as SchnorrSecretKey,
 };
+use dusk_core::transfer::data::ContractCall;
 use dusk_core::JubJubScalar;
 use dusk_vm::host_queries;
 use rand::rngs::StdRng;
@@ -50,6 +54,9 @@ const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
 const NFT_SIGNED_APPROVAL_FOR_ALL_ACTION: [u8; 32] = [31u8; 32];
 const PROXY_ADMIN_DOMAIN: [u8; 32] = [31u8; 32];
 const SET_PROXY_VALUE_ACTION: [u8; 32] = [32u8; 32];
+const MULTISIG_CONTROLLER_DOMAIN: [u8; 32] = [41u8; 32];
+const MULTISIG_PROPOSE_ACTION: [u8; 32] = [42u8; 32];
+const MULTISIG_CONFIRM_ACTION: [u8; 32] = [43u8; 32];
 
 #[derive(Archive, Serialize, Deserialize)]
 struct Drc20ExampleInit {
@@ -122,8 +129,21 @@ struct Drc721AdminCall {
 }
 
 #[derive(Archive, Serialize, Deserialize)]
+#[archive_attr(derive(CheckBytes))]
 struct ProxySetValue {
     value: u64,
+    authorization: Option<SignedAuthorization>,
+}
+
+#[derive(Archive, Serialize, Deserialize)]
+struct MultisigPropose {
+    target: MultisigTarget,
+    authorization: Option<SignedAuthorization>,
+}
+
+#[derive(Archive, Serialize, Deserialize)]
+struct MultisigConfirm {
+    id: MultisigOperationId,
     authorization: Option<SignedAuthorization>,
 }
 
@@ -141,7 +161,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = env::args().collect::<Vec<_>>();
     let Some(command) = args.get(1).map(String::as_str) else {
         eprintln!(
-            "usage: encode_local_smoke_args <drc20-init|drc721-init|multisig-init|proxy-init|unit|u64|nonce|auth-counter-phoenix|auth-counter-moonlight|drc20-mint|drc20-admin|drc721-mint|drc721-admin|drc721-approve|drc721-operator-approval|drc721-operator-query|proxy-set>"
+            "usage: encode_local_smoke_args <drc20-init|drc721-init|multisig-init|proxy-init|proxy-init-contract|unit|u64|nonce|auth-counter-phoenix|auth-counter-moonlight|drc20-mint|drc20-admin|drc721-mint|drc721-admin|drc721-approve|drc721-operator-approval|drc721-operator-query|proxy-set|proxy-set-no-auth|multisig-target|multisig-propose|multisig-confirm>"
         );
         std::process::exit(2);
     };
@@ -182,11 +202,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         })?,
         "multisig-init" => encode(&MultisigInit {
             config: MultisigControllerConfig {
-                owners: vec![admin, phoenix_principal(2)],
+                owners: vec![admin, phoenix_principal(2), phoenix_principal(3)],
                 threshold: 2,
                 proposal_ttl: 10,
                 tombstone_ttl: 6,
             },
+        })?,
+        "proxy-init-contract" => encode(&ProxyCounterInit {
+            admin: Principal::contract(contract_arg(&args, 2)?),
+            implementation: ContractId::from_bytes([9u8; 32]),
+            upgrade_delay: 0,
+            rollback_window: 10,
         })?,
         "unit" => encode(&())?,
         "u64" => encode(&parse_u64_arg(&args, 2, "value")?)?,
@@ -209,6 +235,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             operator: drc721_operator_principal(),
         })?,
         "proxy-set" => encode(&proxy_set_call(&args, admin)?)?,
+        "proxy-set-no-auth" => encode(&ProxySetValue {
+            value: parse_u64_arg(&args, 2, "value")?,
+            authorization: None,
+        })?,
+        "multisig-target" => encode(&multisig_target_arg(&args, 2, 3, 4)?)?,
+        "multisig-propose" => encode(&multisig_propose_call(&args)?)?,
+        "multisig-confirm" => encode(&multisig_confirm_call(&args)?)?,
         _ => {
             eprintln!("unknown command: {command}");
             std::process::exit(2);
@@ -498,6 +531,94 @@ fn proxy_set_call(
     })
 }
 
+fn multisig_propose_call(
+    args: &[String],
+) -> Result<MultisigPropose, Box<dyn Error>> {
+    let multisig = contract_arg(args, 2)?;
+    let owner_seed = parse_u64_arg(args, 4, "owner_seed")?;
+    let nonce = parse_u64_arg(args, 5, "nonce")?;
+    let expires_at = parse_u64_arg(args, 6, "expires_at")?;
+    let id = parse_hex_32(arg(args, 9, "operation_id")?)?;
+    let variant = args.get(10).map(String::as_str).unwrap_or("valid");
+    let owner = phoenix_principal(owner_seed);
+    let secret = SchnorrSecretKey::from(JubJubScalar::from(owner_seed));
+    let public = SchnorrPublicKey::from(&secret);
+    let action = authorized_action(
+        multisig,
+        owner,
+        MULTISIG_CONTROLLER_DOMAIN,
+        action_for_variant(MULTISIG_PROPOSE_ACTION, variant),
+        nonce,
+        expires_at,
+        operation_id_for_variant(id, variant),
+    );
+    let mut rng = StdRng::seed_from_u64(44_444 + owner_seed + nonce);
+    Ok(MultisigPropose {
+        target: multisig_target_arg(args, 3, 7, 8)?,
+        authorization: Some(SignedAuthorization::Phoenix(phoenix_auth(
+            &mut rng, &secret, public, action,
+        ))),
+    })
+}
+
+fn multisig_confirm_call(
+    args: &[String],
+) -> Result<MultisigConfirm, Box<dyn Error>> {
+    let multisig = contract_arg(args, 2)?;
+    let owner_seed = parse_u64_arg(args, 3, "owner_seed")?;
+    let nonce = parse_u64_arg(args, 4, "nonce")?;
+    let expires_at = parse_u64_arg(args, 5, "expires_at")?;
+    let id = parse_hex_32(arg(args, 6, "operation_id")?)?;
+    let variant = args.get(7).map(String::as_str).unwrap_or("valid");
+    let owner = phoenix_principal(owner_seed);
+    let secret = SchnorrSecretKey::from(JubJubScalar::from(owner_seed));
+    let public = SchnorrPublicKey::from(&secret);
+    let action = authorized_action(
+        multisig,
+        owner,
+        MULTISIG_CONTROLLER_DOMAIN,
+        action_for_variant(MULTISIG_CONFIRM_ACTION, variant),
+        nonce,
+        expires_at,
+        operation_id_for_variant(id, variant),
+    );
+    let mut rng = StdRng::seed_from_u64(55_555 + owner_seed + nonce);
+    Ok(MultisigConfirm {
+        id,
+        authorization: Some(SignedAuthorization::Phoenix(phoenix_auth(
+            &mut rng, &secret, public, action,
+        ))),
+    })
+}
+
+fn multisig_target_arg(
+    args: &[String],
+    proxy_index: usize,
+    value_index: usize,
+    salt_index: usize,
+) -> Result<MultisigTarget, Box<dyn Error>> {
+    let proxy = contract_arg(args, proxy_index)?;
+    let value = parse_u64_arg(args, value_index, "value")?;
+    let salt_seed = parse_u8_arg(args, salt_index, "salt_seed")?;
+    proxy_set_value_target(proxy, value, [salt_seed; 32])
+}
+
+fn proxy_set_value_target(
+    proxy: ContractId,
+    value: u64,
+    salt: [u8; 32],
+) -> Result<MultisigTarget, Box<dyn Error>> {
+    Ok(MultisigTarget {
+        call: ContractCall::new(proxy, "set_value")
+            .with_args(&ProxySetValue {
+                value,
+                authorization: None,
+            })
+            .map_err(|e| format!("serialize proxy set_value target: {e:?}"))?,
+        salt,
+    })
+}
+
 fn admin_phoenix_authorization(
     args: AdminPhoenixAction,
     variant: &str,
@@ -691,6 +812,17 @@ fn payload_bool_for_variant(value: bool, variant: &str) -> bool {
     }
 }
 
+fn operation_id_for_variant(
+    id: MultisigOperationId,
+    variant: &str,
+) -> MultisigOperationId {
+    if variant == "bad-payload" {
+        [0xee; 32]
+    } else {
+        id
+    }
+}
+
 fn variant_arg(args: &[String]) -> &str {
     args.get(6).map(String::as_str).unwrap_or("valid")
 }
@@ -712,6 +844,16 @@ fn parse_u64_arg(
 ) -> Result<u64, Box<dyn Error>> {
     arg(args, index, name)?
         .parse::<u64>()
+        .map_err(|e| format!("invalid {name}: {e}").into())
+}
+
+fn parse_u8_arg(
+    args: &[String],
+    index: usize,
+    name: &str,
+) -> Result<u8, Box<dyn Error>> {
+    arg(args, index, name)?
+        .parse::<u8>()
         .map_err(|e| format!("invalid {name}: {e}").into())
 }
 
@@ -759,6 +901,7 @@ fn domain_arg(
         "drc721-admin" => Ok(NFT_ADMIN_DOMAIN),
         "drc721-approval" => Ok(NFT_SIGNED_APPROVE_DOMAIN),
         "proxy-admin" => Ok(PROXY_ADMIN_DOMAIN),
+        "multisig" => Ok(MULTISIG_CONTROLLER_DOMAIN),
         other => Err(format!("unknown domain: {other}").into()),
     }
 }

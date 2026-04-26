@@ -291,9 +291,11 @@ RUSK_WALLET_BIN=/path/to/rusk-wallet \
 
 The script first runs the native suite, builds Wasm, runs the VM deployment
 test, serializes deploy-time init arguments using the Dusk ABI serializer,
-deploys the five example contracts with `rusk-wallet`, and queries one
-exported function from each deployment. `WALLET_DIR` should point at a funded
-local wallet profile.
+deploys the five example contracts plus a second proxy owned by the multisig
+controller, and queries deployed state. It submits positive and negative
+signed transactions, including the 2-of-3 multisig-owned proxy flow, and
+asserts nonce/value state after rejected calls. `WALLET_DIR` should point at a
+funded local wallet profile.
 
 For an isolated local smoke wallet, set `WALLET_RESTORE_FILE` to a funded
 wallet backup. The script restores it into `WALLET_DIR` when the directory does
