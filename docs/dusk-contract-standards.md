@@ -217,8 +217,8 @@ The native test suite covers positive and negative paths for:
   Moonlight/contract approval, Phoenix signed approval, and threshold-gated
   owner/threshold maintenance;
 - standalone multisig controller proposal, confirmation, duplicate-confirmation
-  rejection, expiry cleanup, cancellation, tombstoning, authority updates, and
-  proxy-as-owner VM execution;
+  rejection, non-owner rejection, expiry cleanup, cancellation, tombstoning,
+  authority updates, 2-of-3 property coverage, and proxy-as-owner VM execution;
 - timelock scheduling, cancellation, execution, and invalid states;
 - role-gated timelock controller flows, including self-governed delay updates;
 - reentrancy guard behavior;
@@ -234,10 +234,10 @@ The native test suite covers positive and negative paths for:
 
 The hardening branch also adds property-based state-machine tests for token,
 authorization, ownership, role, timelock, proxy, nonce/replay, checkpoint,
-royalty, and cap primitives. They compare arbitrary operation sequences
-against independent models and assert that rejected operations leave native
-state unchanged. See `docs/dusk-contract-standards-hardening.md` for the
-current hardening track.
+royalty, multisig-controller, and cap primitives. They compare arbitrary
+operation sequences against independent models and assert that rejected
+operations leave native state unchanged. See
+`docs/dusk-contract-standards-hardening.md` for the current hardening track.
 
 The ignored VM test deploys all five Wasm examples, checks positive query
 paths, performs real Moonlight and Phoenix signed calls against the
@@ -246,9 +246,10 @@ failures, submits signed DRC20 mint and signed DRC20 approvals, verifies paused
 DRC20/DRC721 signed mint rejection without nonce movement, submits signed
 DRC721 owner actions and signed DRC721 approvals, submits a signed proxy admin
 call, executes a proxy admin call through the standalone multisig controller,
-covers replay/wrong-payload failures for those reference flows, and calls
-privileged functions without a runtime caller to validate the negative
-authorization path at the VM boundary.
+covers replay/wrong-payload failures for those reference flows, rejects direct
+target calls from individual multisig owners, and calls privileged functions
+without a runtime caller to validate the negative authorization path at the VM
+boundary.
 
 Run the focused suite with:
 

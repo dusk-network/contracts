@@ -59,8 +59,8 @@ The layer does not assume:
 | MULTISIG-1 | Threshold multisig requires distinct owner quorum and rejects duplicate signers before nonce/replay consumption. | primitives |
 | MULTISIG-2 | Observed Moonlight/contract owners can count toward quorum; Phoenix owners require signed action approvals. | primitives |
 | MULTISIG-3 | Multisig owner and threshold maintenance requires current quorum and rejected changes leave state unchanged. | primitives |
-| MULTISIG-4 | Standalone controller proposal/confirmation requires distinct owners, rejects duplicate confirmations without nonce movement, expires stale proposals, tombstones executed ids, and clears stale pending operations after authority-removing changes. | primitives, VM test |
-| MULTISIG-5 | A contract-owned proxy/admin path can be controlled by the standalone multisig controller through observed inter-contract caller context. | VM test |
+| MULTISIG-4 | Standalone controller proposal/confirmation requires distinct owners, rejects non-owners and duplicate confirmations without nonce movement, expires stale proposals, tombstones executed ids, and clears stale pending operations after authority-removing changes. | primitives, properties, VM test |
+| MULTISIG-5 | A contract-owned proxy/admin path can be controlled by a 2-of-3 standalone multisig controller through observed inter-contract caller context, while direct owner calls to the governed target fail. | VM test |
 | ACCESS-1 | Role grants/revokes are admin-gated, reject zero accounts, and emit typed events when state changes. | primitives, DRC20 reference, data-driver event decoding |
 | ACCESS-2 | Owner and owner-set initialization reject zero principals atomically. | primitives, properties |
 | PAUSE-1 | Reference pausable DRC20/DRC721 pause all balance-changing operations. | primitives, VM test, local-node smoke |
@@ -113,6 +113,10 @@ For dependency advisory scanning, install `cargo-audit` and opt in:
 ```sh
 RUN_CARGO_AUDIT=1 ./scripts/dusk-contract-standards-audit-grade.sh
 ```
+
+## Focused Reviews
+
+- `docs/dusk-contract-standards-multisig-controller-review.md`
 
 ## Auditor Checklist
 

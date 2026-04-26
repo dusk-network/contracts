@@ -12,7 +12,9 @@ use dusk_contract_standards::core::{
     CallContext, NonceEntry, NonceManager, Principal, ReplayEntry, ReplayGuard,
 };
 use dusk_contract_standards::governance::{
-    Timelock, TimelockController, EXECUTOR_ROLE, PROPOSER_ROLE,
+    MultisigController, MultisigControllerConfig, MultisigControllerStatus,
+    MultisigOperationId, MultisigPendingOperation, MultisigTarget, Timelock,
+    TimelockController, EXECUTOR_ROLE, PROPOSER_ROLE,
 };
 use dusk_contract_standards::proxy::UpgradeAdmin;
 use dusk_contract_standards::token::drc20::{
@@ -33,6 +35,7 @@ use dusk_core::signatures::bls::{
 use dusk_core::signatures::schnorr::{
     PublicKey as SchnorrPublicKey, SecretKey as SchnorrSecretKey,
 };
+use dusk_core::transfer::data::ContractCall;
 use dusk_core::JubJubScalar;
 use proptest::prelude::*;
 use rand::rngs::StdRng;
@@ -72,6 +75,25 @@ fn all_principals() -> Vec<Principal> {
 
 fn contract_id(index: u8) -> ContractId {
     ContractId::from_bytes([index; 32])
+}
+
+fn multisig_target(
+    contract_seed: u8,
+    arg_seed: u8,
+    salt_seed: u8,
+) -> MultisigTarget {
+    MultisigTarget {
+        call: ContractCall::new(contract_id(contract_seed), "set_value")
+            .with_raw_args(vec![arg_seed, arg_seed.wrapping_add(1)]),
+        salt: [salt_seed; 32],
+    }
+}
+
+fn multisig_snapshot(
+    controller: &MultisigController,
+    id: MultisigOperationId,
+) -> (Option<MultisigPendingOperation>, Option<u64>) {
+    (controller.proposal(id), controller.tombstone_expiry(id))
 }
 
 fn role(index: u8) -> [u8; 32] {
@@ -2926,6 +2948,146 @@ proptest! {
                 );
             }
         }
+    }
+
+    #[test]
+    fn multisig_controller_two_of_three_threshold_and_rejections_are_consistent(
+        proposer in 0usize..3,
+        second in 0usize..3,
+        ttl in 2u64..64,
+        tombstone_ttl in 1u64..64,
+        now in 0u64..64,
+        id_seed in any::<u8>(),
+        contract_seed in 1u8..=250,
+        arg_seed in any::<u8>(),
+        salt_seed in any::<u8>(),
+    ) {
+        let owners = [principal(1), principal(2), principal(3)];
+        let outsider = principal(4);
+        let id = [id_seed; 32];
+        let target = multisig_target(contract_seed, arg_seed, salt_seed);
+
+        let mut controller = MultisigController::new();
+        controller.init(MultisigControllerConfig {
+            owners: owners.to_vec(),
+            threshold: 2,
+            proposal_ttl: ttl,
+            tombstone_ttl,
+        });
+
+        let before = multisig_snapshot(&controller, id);
+        let outsider_propose = catch_unwind(AssertUnwindSafe(|| {
+            controller.propose(id, target.clone(), outsider, now);
+        }))
+        .is_ok();
+        prop_assert!(!outsider_propose, "non-owner proposed an operation");
+        prop_assert_eq!(
+            multisig_snapshot(&controller, id),
+            before,
+            "failed outsider proposal mutated controller state",
+        );
+
+        let proposed = controller.propose(id, target.clone(), owners[proposer], now);
+        prop_assert_eq!(proposed.status, MultisigControllerStatus::Proposed);
+        prop_assert_eq!(proposed.confirmations, 1);
+        prop_assert_eq!(proposed.threshold, 2);
+        prop_assert!(proposed.ready_operation.is_none());
+        let pending = controller.proposal(id).expect("one-of-three stays pending");
+        prop_assert_eq!(&pending.target, &target);
+        prop_assert_eq!(pending.confirmations, vec![owners[proposer]]);
+        prop_assert_eq!(pending.deadline, now + ttl);
+
+        let before = multisig_snapshot(&controller, id);
+        let outsider_confirm = catch_unwind(AssertUnwindSafe(|| {
+            controller.confirm(id, outsider, now);
+        }))
+        .is_ok();
+        prop_assert!(!outsider_confirm, "non-owner confirmed an operation");
+        prop_assert_eq!(
+            multisig_snapshot(&controller, id),
+            before,
+            "failed outsider confirmation mutated controller state",
+        );
+
+        let before = multisig_snapshot(&controller, id);
+        let duplicate_confirm = catch_unwind(AssertUnwindSafe(|| {
+            controller.confirm(id, owners[proposer], now);
+        }))
+        .is_ok();
+        prop_assert!(!duplicate_confirm, "duplicate owner confirmation succeeded");
+        prop_assert_eq!(
+            multisig_snapshot(&controller, id),
+            before,
+            "failed duplicate confirmation mutated controller state",
+        );
+
+        let mut expired = controller.clone();
+        let expired_confirm = catch_unwind(AssertUnwindSafe(|| {
+            expired.confirm(id, owners[(proposer + 1) % owners.len()], now + ttl + 1);
+        }))
+        .is_ok();
+        prop_assert!(!expired_confirm, "expired proposal was confirmed");
+        prop_assert!(
+            expired.proposal(id).is_none(),
+            "expired proposal was not pruned",
+        );
+        prop_assert!(
+            expired.tombstone_expiry(id).is_none(),
+            "expired proposal created a tombstone",
+        );
+
+        if second == proposer {
+            let before = multisig_snapshot(&controller, id);
+            let duplicate_second = catch_unwind(AssertUnwindSafe(|| {
+                controller.confirm(id, owners[second], now);
+            }))
+            .is_ok();
+            prop_assert!(!duplicate_second, "duplicate generated signer reached quorum");
+            prop_assert_eq!(
+                multisig_snapshot(&controller, id),
+                before,
+                "failed generated duplicate mutated controller state",
+            );
+            return Ok(());
+        }
+
+        let ready = controller.confirm(id, owners[second], now);
+        prop_assert_eq!(ready.status, MultisigControllerStatus::Ready);
+        prop_assert_eq!(ready.confirmations, 2);
+        prop_assert_eq!(ready.threshold, 2);
+        let ready_operation = ready.ready_operation.expect("quorum operation");
+        prop_assert_eq!(&ready_operation.target, &target);
+        prop_assert_eq!(
+            ready_operation.confirmations,
+            vec![owners[proposer], owners[second]],
+        );
+        prop_assert!(controller.proposal(id).is_none());
+        prop_assert_eq!(controller.tombstone_expiry(id), Some(now + tombstone_ttl));
+
+        let before = multisig_snapshot(&controller, id);
+        let tombstoned_reproposal = catch_unwind(AssertUnwindSafe(|| {
+            controller.propose(id, target.clone(), owners[(proposer + 2) % owners.len()], now + tombstone_ttl);
+        }))
+        .is_ok();
+        prop_assert!(
+            !tombstoned_reproposal,
+            "operation id was re-used before tombstone expiry",
+        );
+        prop_assert_eq!(
+            multisig_snapshot(&controller, id),
+            before,
+            "failed tombstoned re-proposal mutated controller state",
+        );
+
+        let reproposed = controller.propose(
+            id,
+            target,
+            owners[(proposer + 2) % owners.len()],
+            now + tombstone_ttl + 1,
+        );
+        prop_assert_eq!(reproposed.status, MultisigControllerStatus::Proposed);
+        prop_assert_eq!(reproposed.confirmations, 1);
+        prop_assert!(controller.proposal(id).is_some());
     }
 
     #[test]

@@ -344,13 +344,18 @@ fn wasm_examples_deploy_and_answer_queries() {
 
     let multisig_owner_a = phoenix_principal(8);
     let multisig_owner_b = phoenix_principal(9);
+    let multisig_owner_c = phoenix_principal(10);
     let multisig = deploy(
         &mut session,
         "multisig_controller.wasm",
         [23u8; 32],
         &MultisigInit {
             config: MultisigControllerConfig {
-                owners: vec![multisig_owner_a, multisig_owner_b],
+                owners: vec![
+                    multisig_owner_a,
+                    multisig_owner_b,
+                    multisig_owner_c,
+                ],
                 threshold: 2,
                 proposal_ttl: 10,
                 tombstone_ttl: 6,
@@ -374,6 +379,7 @@ fn wasm_examples_deploy_and_answer_queries() {
         governed_proxy,
         multisig_owner_a,
         multisig_owner_b,
+        multisig_owner_c,
     );
 }
 
@@ -1864,20 +1870,107 @@ fn exercise_multisig_controller_admin_call(
     proxy: ContractId,
     owner_a: Principal,
     owner_b: Principal,
+    owner_c: Principal,
 ) {
     let mut rng = StdRng::seed_from_u64(5555);
     let owner_a_sk = SchnorrSecretKey::from(JubJubScalar::from(8u64));
     let owner_a_pk = SchnorrPublicKey::from(&owner_a_sk);
     let owner_b_sk = SchnorrSecretKey::from(JubJubScalar::from(9u64));
     let owner_b_pk = SchnorrPublicKey::from(&owner_b_sk);
+    let owner_c_sk = SchnorrSecretKey::from(JubJubScalar::from(10u64));
+    let owner_c_pk = SchnorrPublicKey::from(&owner_c_sk);
+    let outsider = phoenix_principal(11);
+    let outsider_sk = SchnorrSecretKey::from(JubJubScalar::from(11u64));
+    let outsider_pk = SchnorrPublicKey::from(&outsider_sk);
     assert_eq!(owner_a, Principal::phoenix_public_key(&owner_a_pk));
     assert_eq!(owner_b, Principal::phoenix_public_key(&owner_b_pk));
+    assert_eq!(owner_c, Principal::phoenix_public_key(&owner_c_pk));
+    assert_eq!(outsider, Principal::phoenix_public_key(&outsider_pk));
+
+    assert!(session
+        .call::<_, ()>(
+            proxy,
+            "set_value",
+            &ProxySetValue {
+                value: 55,
+                authorization: None,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_proxy_value(session, proxy, 0);
+
+    let direct_owner_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_a_sk,
+        owner_a_pk,
+        authorized_action(
+            proxy,
+            owner_a,
+            PROXY_ADMIN_DOMAIN,
+            SET_PROXY_VALUE_ACTION,
+            0,
+            0,
+            proxy_value_payload_hash(66),
+        ),
+    ));
+    assert!(session
+        .call::<_, ()>(
+            proxy,
+            "set_value",
+            &ProxySetValue {
+                value: 66,
+                authorization: Some(direct_owner_auth),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(session, proxy, owner_a, PROXY_ADMIN_DOMAIN, 0);
+    assert_proxy_value(session, proxy, 0);
 
     let target = proxy_set_value_target(proxy, 77, [1u8; 32]);
     let id: MultisigOperationId = session
         .call(multisig, "operation_id", &target, GAS_LIMIT)
         .expect("compute multisig operation id")
         .data;
+
+    let outsider_propose = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &outsider_sk,
+        outsider_pk,
+        authorized_action(
+            multisig,
+            outsider,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_PROPOSE_ACTION,
+            0,
+            0,
+            id,
+        ),
+    ));
+    assert!(session
+        .call::<_, Vec<u8>>(
+            multisig,
+            "propose",
+            &MultisigPropose {
+                target: target.clone(),
+                authorization: Some(outsider_propose),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    assert_contract_nonce(
+        session,
+        multisig,
+        outsider,
+        MULTISIG_CONTROLLER_DOMAIN,
+        0,
+    );
+    let pending: Option<MultisigPendingOperation> = session
+        .call(multisig, "proposal", &id, GAS_LIMIT)
+        .expect("query rejected multisig operation")
+        .data;
+    assert!(pending.is_none());
 
     let propose_auth = SignedAuthorization::Phoenix(phoenix_auth(
         &mut rng,
@@ -2063,6 +2156,95 @@ fn exercise_multisig_controller_admin_call(
         1,
     );
     assert_proxy_value(session, proxy, 77);
+
+    let second_target = proxy_set_value_target(proxy, 88, [2u8; 32]);
+    let second_id: MultisigOperationId = session
+        .call(multisig, "operation_id", &second_target, GAS_LIMIT)
+        .expect("compute second multisig operation id")
+        .data;
+    let second_propose_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_a_sk,
+        owner_a_pk,
+        authorized_action(
+            multisig,
+            owner_a,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_PROPOSE_ACTION,
+            1,
+            0,
+            second_id,
+        ),
+    ));
+    let returned: Vec<u8> = session
+        .call(
+            multisig,
+            "propose",
+            &MultisigPropose {
+                target: second_target,
+                authorization: Some(second_propose_auth),
+            },
+            GAS_LIMIT,
+        )
+        .expect("propose second multisig operation")
+        .data;
+    assert!(returned.is_empty());
+    assert_proxy_value(session, proxy, 77);
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_a,
+        MULTISIG_CONTROLLER_DOMAIN,
+        2,
+    );
+
+    let second_confirm_auth = SignedAuthorization::Phoenix(phoenix_auth(
+        &mut rng,
+        &owner_c_sk,
+        owner_c_pk,
+        authorized_action(
+            multisig,
+            owner_c,
+            MULTISIG_CONTROLLER_DOMAIN,
+            MULTISIG_CONFIRM_ACTION,
+            0,
+            0,
+            second_id,
+        ),
+    ));
+    let receipt = session
+        .call::<_, Vec<u8>>(
+            multisig,
+            "confirm",
+            &MultisigConfirm {
+                id: second_id,
+                authorization: Some(second_confirm_auth),
+            },
+            GAS_LIMIT,
+        )
+        .expect("confirm second multisig operation");
+    let execution = receipt
+        .events
+        .iter()
+        .find(|event| event.topic == MULTISIG_OPERATION_EXECUTED_TOPIC)
+        .map(|event| {
+            rkyv::from_bytes::<MultisigOperationExecuted>(&event.data)
+                .expect("decode second multisig execution event")
+        })
+        .expect("second multisig execution event");
+    assert!(
+        execution.success,
+        "second multisig target execution failed: {:?}",
+        execution.error
+    );
+    assert_proxy_value(session, proxy, 88);
+    assert_contract_nonce(
+        session,
+        multisig,
+        owner_c,
+        MULTISIG_CONTROLLER_DOMAIN,
+        1,
+    );
 }
 
 fn exercise_authorization_counter_signed_calls(
