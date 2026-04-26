@@ -13,6 +13,7 @@ the composing contract:
   nonce, principal, and expiry before nonce/replay state is consumed;
 - owner, role, and upgrade-admin checks must not consume a valid signer nonce
   when the signer is not authorized for the policy being checked;
+- mixed owner-set checks must follow the same no-consume-on-unauthorized rule;
 - failed token operations must not leave partial native state behind;
 - DRC20 total supply must equal the modeled sum of balances for all touched
   accounts;
@@ -27,9 +28,18 @@ the composing contract:
 ## Added Validation
 
 `standards/dusk-contract-standards/tests/properties.rs` adds property-based
-state-machine tests for DRC20 and DRC721. The tests generate random operation
-sequences, run them against the real primitive and an independent model, and
-assert after each operation that:
+state-machine tests for:
+
+- action-bound authorization rejection cases;
+- mixed owner sets;
+- access-control role/admin mutation;
+- timelock scheduling, execution, cancellation, and delay mutation;
+- upgrade-admin prepare, activate, cancel, rollback, and finalization flows;
+- DRC20 accounting and allowance flows;
+- DRC721 ownership, approval, operator, balance, and enumerable views.
+
+The tests generate random operation sequences, run them against the real
+primitive and an independent model, and assert after each operation that:
 
 - success/failure matches the model;
 - successful calls produce the exact expected state;
@@ -46,6 +56,20 @@ Run the hardening tests with:
 cargo test -p dusk-contract-standards
 cargo test -p dusk-contract-standards --test properties
 ```
+
+Run the long randomized hardening loop with:
+
+```sh
+start=$(date +%s)
+end=$((start + 14400))
+while [ "$(date +%s)" -lt "$end" ]; do
+  PROPTEST_CASES=2048 PROPTEST_MAX_SHRINK_ITERS=8192 \
+    cargo test -p dusk-contract-standards --test properties
+done
+```
+
+On April 26, 2026, this loop ran for 14,404 seconds and completed 367 full
+property-suite iterations without a failure.
 
 Run the full standards validation pass with:
 
