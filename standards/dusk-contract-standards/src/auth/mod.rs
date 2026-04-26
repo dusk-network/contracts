@@ -480,7 +480,11 @@ impl AuthorizationManager {
 
     /// Verifies a signed authorization for an exact call envelope without
     /// consuming nonce/replay state.
-    fn verify_signed_action(
+    ///
+    /// This is an advanced primitive for higher-level authorization policies
+    /// such as multisig threshold checks. Callers must only consume the
+    /// authorization after all policy checks have succeeded.
+    pub fn verify_signed_action(
         &self,
         authorization: &SignedAuthorization,
         envelope: ActionEnvelope,
@@ -599,7 +603,13 @@ impl AuthorizationManager {
         }
     }
 
-    fn consume_verified(&mut self, authorization: &SignedAuthorization) {
+    /// Consumes nonce/replay state for an authorization that was already
+    /// verified against its call envelope.
+    ///
+    /// This is intentionally low level. Public contract methods should usually
+    /// use `authorize_signed_action` or a higher-level helper so verification
+    /// and consumption remain coupled.
+    pub fn consume_verified(&mut self, authorization: &SignedAuthorization) {
         let action = authorization.action();
         self.consume_action(action.principal, action.domain, action.nonce);
         if let SignedAuthorization::Phoenix(auth) = authorization {

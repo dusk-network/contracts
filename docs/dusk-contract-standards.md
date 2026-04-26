@@ -82,6 +82,15 @@ executor, canceller, and admin policies. Controller maintenance that changes
 the minimum delay is self-governed: it must be scheduled and executed through
 the timelock path rather than performed directly by an administrator.
 
+`ThresholdMultisig` is the Dusk-native answer to single-owner admin risk. It
+counts distinct Moonlight, Phoenix, and contract principals toward a threshold:
+Moonlight and contract owners may be observed through call context, while
+Phoenix owners must approve with signed actions. The primitive verifies every
+approval against the exact `ActionEnvelope` and checks distinct owner quorum
+before consuming any nonce or replay state. This lets proxy admins, token
+admins, pausers, and future governance flows require M-of-N approval instead of
+trusting one hot wallet.
+
 ## Client Signing Flow
 
 Clients sign an `AuthorizedAction` for the exact contract action they want to
@@ -190,6 +199,9 @@ The native test suite covers positive and negative paths for:
 - action-bound authorization helpers that reject wrong envelopes before nonce
   movement;
 - observed-or-signed owner, role, and upgrade-admin authorization;
+- threshold multisig authorization, duplicate signer rejection, observed
+  Moonlight/contract approval, Phoenix signed approval, and threshold-gated
+  owner/threshold maintenance;
 - timelock scheduling, cancellation, execution, and invalid states;
 - role-gated timelock controller flows, including self-governed delay updates;
 - reentrancy guard behavior;

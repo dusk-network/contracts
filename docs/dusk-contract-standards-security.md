@@ -67,6 +67,20 @@ for indexers and wallets. Timelock controller maintenance, including minimum
 delay changes, should go through the timelock itself rather than a direct admin
 call.
 
+## Threshold Multisig
+
+Do not default production admin paths to a single owner when compromise of that
+owner would give full control. `ThresholdMultisig` lets composing contracts
+require a distinct M-of-N owner quorum over Dusk principals. It counts observed
+Moonlight/contract callers when the runtime exposes them, requires Phoenix
+owners to use signed approvals, rejects duplicate signers, and verifies all
+approvals before consuming any nonce/replay state.
+
+Multisig approvals should be bound to the exact operation through
+`ActionEnvelope`. Owner-set changes, threshold changes, proxy upgrades, token
+minting, pausing, and role administration should use separate domains or action
+ids so approvals cannot be replayed across policy surfaces.
+
 ## Audit Packet
 
 `docs/dusk-contract-standards-audit.md` is the auditor-facing packet for this

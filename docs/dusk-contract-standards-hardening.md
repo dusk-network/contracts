@@ -15,6 +15,8 @@ the composing contract:
   all rejected envelope, signature, expiry, policy, and replay-key cases;
 - owner, role, and upgrade-admin checks must not consume a valid signer nonce
   when the signer is not authorized for the policy being checked;
+- threshold multisig checks must verify distinct owner quorum before consuming
+  any signer nonce or replay key;
 - mixed owner-set checks must follow the same no-consume-on-unauthorized rule;
 - failed token operations must not leave partial native state behind;
 - DRC20 total supply must equal the modeled sum of balances for all touched

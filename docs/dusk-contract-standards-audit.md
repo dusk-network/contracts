@@ -55,6 +55,9 @@ The layer does not assume:
 | AUTH-2 | Rejected envelope, signature, expiry, role, owner, admin, and replay-key cases do not advance nonce/replay state. | property negative matrices, VM test, local-node smoke |
 | AUTH-3 | Phoenix authorization proves control of a Schnorr key principal and never relies on observed caller identity. | primitives, properties, signed auth example, local-node smoke |
 | AUTH-4 | Moonlight owners can authorize by observed caller or signed BLS action; contract owners only by observed contract caller. | primitives, reference contracts, VM test |
+| MULTISIG-1 | Threshold multisig requires distinct owner quorum and rejects duplicate signers before nonce/replay consumption. | primitives |
+| MULTISIG-2 | Observed Moonlight/contract owners can count toward quorum; Phoenix owners require signed action approvals. | primitives |
+| MULTISIG-3 | Multisig owner and threshold maintenance requires current quorum and rejected changes leave state unchanged. | primitives |
 | ACCESS-1 | Role grants/revokes are admin-gated, reject zero accounts, and emit typed events when state changes. | primitives, DRC20 reference, data-driver event decoding |
 | ACCESS-2 | Owner and owner-set initialization reject zero principals atomically. | primitives, properties |
 | PAUSE-1 | Reference pausable DRC20/DRC721 pause all balance-changing operations. | primitives, VM test, local-node smoke |
@@ -116,6 +119,8 @@ Reviewers should focus on:
   Phoenix, and contract callers;
 - whether every public signed path uses action-bound helpers before nonce
   consumption;
+- whether single-owner admin paths should be replaced with
+  `ThresholdMultisig` composition before production deployment;
 - whether payload-hash construction is unambiguous and domain separated enough
   for downstream wallets;
 - whether pause semantics match product/security expectations;

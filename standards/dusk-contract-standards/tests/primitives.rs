@@ -13,8 +13,8 @@ use dusk_contract_standards::core::{
     ReplayGuard,
 };
 use dusk_contract_standards::governance::{
-    Timelock, TimelockController, CANCELLER_ROLE, EXECUTOR_ROLE, PROPOSER_ROLE,
-    TIMELOCK_ADMIN_ROLE,
+    MultisigConfig, ThresholdMultisig, Timelock, TimelockController,
+    CANCELLER_ROLE, EXECUTOR_ROLE, PROPOSER_ROLE, TIMELOCK_ADMIN_ROLE,
 };
 use dusk_contract_standards::proxy::{
     StateStore, UpgradeActivated, UpgradeAdmin, UpgradeCancelled,
@@ -58,6 +58,63 @@ fn assert_panics(f: impl FnOnce()) {
 fn moonlight_secret(seed: u64) -> BlsSecretKey {
     let mut rng = StdRng::seed_from_u64(seed);
     BlsSecretKey::random(&mut rng)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn signed_moonlight_action(
+    secret: BlsSecretKey,
+    public_key: BlsPublicKey,
+    principal: Principal,
+    contract: ContractId,
+    domain: [u8; 32],
+    action_id: [u8; 32],
+    payload_hash: [u8; 32],
+    nonce: u64,
+) -> SignedAuthorization {
+    let action = AuthorizedAction {
+        contract,
+        domain,
+        action_id,
+        nonce,
+        expires_at: 0,
+        principal,
+        payload_hash,
+    };
+    SignedAuthorization::Moonlight(MoonlightAuthorization {
+        action,
+        public_key,
+        signature: secret.sign(&action.message_bytes()),
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn signed_phoenix_action(
+    secret: SchnorrSecretKey,
+    public_key: SchnorrPublicKey,
+    principal: Principal,
+    contract: ContractId,
+    domain: [u8; 32],
+    action_id: [u8; 32],
+    payload_hash: [u8; 32],
+    nonce: u64,
+    rng_seed: u64,
+) -> SignedAuthorization {
+    let action = AuthorizedAction {
+        contract,
+        domain,
+        action_id,
+        nonce,
+        expires_at: 0,
+        principal,
+        payload_hash,
+    };
+    let mut rng = StdRng::seed_from_u64(rng_seed);
+    SignedAuthorization::Phoenix(PhoenixSignatureAuthorization {
+        action,
+        public_key,
+        signature: secret.sign(&mut rng, action.message_hash()),
+        replay_key: None,
+    })
 }
 
 #[test]
@@ -160,6 +217,235 @@ fn owner_set_supports_mixed_dusk_principals() {
         owners.replace_owner(contract, p(99), p(10));
     });
     assert_eq!(owners.owners(), before);
+}
+
+#[test]
+fn threshold_multisig_requires_distinct_quorum_before_nonce_consumption() {
+    let owner_a_sk = moonlight_secret(101);
+    let owner_a_pk = BlsPublicKey::from(&owner_a_sk);
+    let owner_a = Principal::moonlight(&owner_a_pk);
+    let owner_b_sk = moonlight_secret(102);
+    let owner_b_pk = BlsPublicKey::from(&owner_b_sk);
+    let owner_b = Principal::moonlight(&owner_b_pk);
+    let outsider_sk = moonlight_secret(103);
+    let outsider_pk = BlsPublicKey::from(&outsider_sk);
+    let outsider = Principal::moonlight(&outsider_pk);
+
+    let contract = c(104);
+    let domain = [105u8; 32];
+    let action_id = [106u8; 32];
+    let payload_hash = [107u8; 32];
+    let envelope =
+        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+
+    let mut multisig = ThresholdMultisig::new();
+    multisig.init(MultisigConfig {
+        owners: vec![owner_a, owner_b],
+        threshold: 2,
+    });
+
+    let approval_a = signed_moonlight_action(
+        owner_a_sk,
+        owner_a_pk,
+        owner_a,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+        0,
+    );
+    let approval_b = signed_moonlight_action(
+        owner_b_sk,
+        owner_b_pk,
+        owner_b,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+        0,
+    );
+    let outsider_approval = signed_moonlight_action(
+        outsider_sk,
+        outsider_pk,
+        outsider,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+        0,
+    );
+
+    let mut manager = AuthorizationManager::new();
+    assert_panics(|| {
+        multisig.authorize_action(
+            &mut manager,
+            CallContext::none(),
+            std::slice::from_ref(&approval_a),
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(owner_a, domain), 0);
+
+    assert_panics(|| {
+        multisig.authorize_action(
+            &mut manager,
+            CallContext::none(),
+            &[approval_a.clone(), approval_a.clone()],
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(owner_a, domain), 0);
+
+    assert_panics(|| {
+        multisig.authorize_action(
+            &mut manager,
+            CallContext::none(),
+            &[approval_a.clone(), outsider_approval],
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(owner_a, domain), 0);
+    assert_eq!(manager.nonce(outsider, domain), 0);
+
+    let wrong_envelope =
+        ActionEnvelope::new(contract, domain, action_id, [108u8; 32]);
+    assert_panics(|| {
+        multisig.authorize_action(
+            &mut manager,
+            CallContext::none(),
+            &[approval_a.clone(), approval_b.clone()],
+            wrong_envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(owner_a, domain), 0);
+    assert_eq!(manager.nonce(owner_b, domain), 0);
+
+    let signers = multisig.authorize_action(
+        &mut manager,
+        CallContext::none(),
+        &[approval_a.clone(), approval_b.clone()],
+        envelope,
+        0,
+    );
+    assert_eq!(signers.len(), 2);
+    assert!(signers.contains(&owner_a));
+    assert!(signers.contains(&owner_b));
+    assert_eq!(manager.nonce(owner_a, domain), 1);
+    assert_eq!(manager.nonce(owner_b, domain), 1);
+
+    assert_panics(|| {
+        multisig.authorize_action(
+            &mut manager,
+            CallContext::none(),
+            &[approval_a, approval_b],
+            envelope,
+            0,
+        );
+    });
+    assert_eq!(manager.nonce(owner_a, domain), 1);
+    assert_eq!(manager.nonce(owner_b, domain), 1);
+}
+
+#[test]
+fn threshold_multisig_counts_observed_moonlight_and_contract_callers() {
+    let contract_owner = Principal::contract(c(110));
+    let phoenix_sk = SchnorrSecretKey::from(JubJubScalar::from(111u64));
+    let phoenix_pk = SchnorrPublicKey::from(&phoenix_sk);
+    let phoenix_owner = Principal::phoenix_public_key(&phoenix_pk);
+    let contract = c(112);
+    let domain = [113u8; 32];
+    let action_id = [114u8; 32];
+    let payload_hash = [115u8; 32];
+    let envelope =
+        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+
+    let mut multisig = ThresholdMultisig::new();
+    multisig.init(MultisigConfig {
+        owners: vec![contract_owner, phoenix_owner],
+        threshold: 2,
+    });
+
+    let phoenix_approval = signed_phoenix_action(
+        phoenix_sk,
+        phoenix_pk,
+        phoenix_owner,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+        0,
+        116,
+    );
+
+    let mut manager = AuthorizationManager::new();
+    assert_panics(|| {
+        multisig.authorize_action(
+            &mut manager,
+            CallContext::from_principal(phoenix_owner),
+            &[],
+            envelope,
+            0,
+        );
+    });
+
+    let signers = multisig.authorize_action(
+        &mut manager,
+        CallContext::from_principal(contract_owner),
+        &[phoenix_approval],
+        envelope,
+        0,
+    );
+    assert_eq!(signers, vec![phoenix_owner, contract_owner]);
+    assert_eq!(manager.nonce(phoenix_owner, domain), 1);
+}
+
+#[test]
+fn threshold_multisig_owner_management_requires_quorum_and_is_atomic() {
+    let owner_a = p(120);
+    let owner_b = p(121);
+    let owner_c = p(122);
+    let owner_d = p(123);
+    let outsider = p(124);
+
+    let mut multisig = ThresholdMultisig::new();
+    multisig.init(MultisigConfig {
+        owners: vec![owner_a, owner_b, owner_c],
+        threshold: 2,
+    });
+
+    assert_panics(|| multisig.set_threshold(&[owner_a], 1));
+    assert_eq!(multisig.threshold(), 2);
+
+    assert_panics(|| multisig.add_owner(&[owner_a, outsider], owner_d));
+    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_c]);
+
+    multisig.add_owner(&[owner_a, owner_b], owner_d);
+    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_c, owner_d]);
+
+    let before = multisig.owners();
+    assert_panics(|| {
+        multisig.replace_owner(&[owner_a, owner_b], owner_c, owner_d)
+    });
+    assert_eq!(multisig.owners(), before);
+
+    assert_panics(|| multisig.remove_owner(&[owner_a, owner_b], owner_d, 4));
+    assert_eq!(multisig.owners(), before);
+    assert_eq!(multisig.threshold(), 2);
+
+    multisig.remove_owner(&[owner_a, owner_b], owner_d, 2);
+    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_c]);
+
+    multisig.replace_owner(&[owner_a, owner_b], owner_c, owner_d);
+    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_d]);
+
+    multisig.set_threshold(&[owner_a, owner_b], 3);
+    assert_eq!(multisig.threshold(), 3);
+    assert_panics(|| multisig.set_threshold(&[owner_a, owner_b], 0));
+    assert_eq!(multisig.threshold(), 3);
 }
 
 #[test]
