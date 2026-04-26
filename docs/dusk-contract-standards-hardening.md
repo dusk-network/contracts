@@ -108,6 +108,28 @@ PROPTEST_CASES=4096 PROPTEST_MAX_SHRINK_ITERS=8192 \
   cargo test -p dusk-contract-standards --test properties
 ```
 
+The property suite now also honors `STANDARDS_PROPTEST_CASES` and
+`STANDARDS_PROPTEST_MAX_SHRINK_ITERS`, which lets CI run longer without
+editing the test source:
+
+```sh
+STANDARDS_PROPTEST_CASES=8192 STANDARDS_PROPTEST_MAX_SHRINK_ITERS=16384 \
+  cargo test -p dusk-contract-standards --test properties
+```
+
+Forge data-driver ABI fuzzing covers JSON-to-rkyv input encoding, input
+decoding, roundtrips, malformed JSON, bad shapes, unknown functions, and
+mutated encoded payloads for the four standards reference contracts:
+
+```sh
+make standards-data-drivers
+STANDARDS_DATA_DRIVER_FUZZ_CASES=2048 \
+  cargo test -p dusk-contract-standards --test data_driver_fuzz -- --ignored
+```
+
+The `standards-hardening` workflow runs these longer property and data-driver
+fuzz jobs on demand and nightly.
+
 Run the full standards validation pass with:
 
 ```sh
@@ -121,12 +143,13 @@ cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,proxy-counter/contract
 cargo test -p dusk-contract-standards --test examples_vm -- --ignored
 make standards-data-drivers
+cargo test -p dusk-contract-standards --test data_driver_fuzz -- --ignored
 cargo clippy -p dusk-contract-standards --all-targets -- -D warnings
 ```
 
 ## Next Research Items
 
-The next hardening layer should add ABI-level fuzzing of Forge call payloads,
-longer-running property tests in CI, mutation testing for authorization and
-pause paths, and local-node scenario tests that intentionally mix successful
-transactions with rejected transactions across block boundaries.
+The next hardening layer should add mutation testing for authorization and
+pause paths, differential tests against independent client encoders, and
+local-node scenario tests that intentionally mix successful transactions with
+rejected transactions across block boundaries.

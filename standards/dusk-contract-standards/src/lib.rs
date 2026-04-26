@@ -13,11 +13,15 @@
 extern crate alloc;
 
 #[cfg(test)]
+use dusk_data_driver as _;
+#[cfg(test)]
 use dusk_vm as _;
 #[cfg(test)]
 use proptest as _;
 #[cfg(test)]
 use rand as _;
+#[cfg(test)]
+use serde_json as _;
 #[cfg(feature = "serde")]
 use serde_with as _;
 #[cfg(feature = "serde")]

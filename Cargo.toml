@@ -28,6 +28,11 @@ dusk-data-driver = { path = "../rusk-private/data-drivers/data-driver" }
 dusk-forge = { path = "../forge-explicit-emits" }
 dusk-vm = { path = "../rusk-private/vm" }
 dusk-wallet-core = { path = "../rusk-private/wallet-core" }
+dusk-wasmtime = { version = "21.0.0-alpha", default-features = false, features = [
+    "cranelift",
+    "runtime",
+    "parallel-compilation",
+] }
 rusk-profile = { path = "../rusk-private/rusk-profile" }
 rusk-prover = { path = "../rusk-private/rusk-prover" }
 
@@ -36,6 +41,7 @@ bytecheck = { version = "0.6.12", default-features = false }
 criterion = "0.5.1"
 ff = { version = "0.13", default-features = false }
 rand = { version = "0.8.5", default-features = false }
+parking_lot = "0.12.3"
 ringbuffer = "0.15"
 rkyv = { version = "0.7.39", default-features = false }
 serde = { version = "1", default-features = false, features = [

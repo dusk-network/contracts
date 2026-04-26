@@ -19,6 +19,8 @@ contract = []
 serde = ["dep:serde", "dep:serde_with", "dep:time", "dusk-core/serde"]
 
 [dev-dependencies]
+dusk-data-driver = { workspace = true, features = ["reader"] }
 dusk-vm = { workspace = true }
 proptest = "1.6.0"
 rand = { workspace = true, features = ["std_rng"] }
+serde_json = { workspace = true, features = ["std"] }

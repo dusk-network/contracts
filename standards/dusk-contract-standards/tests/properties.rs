@@ -38,6 +38,22 @@ use proptest::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+fn standards_proptest_config() -> ProptestConfig {
+    ProptestConfig {
+        cases: env_usize("STANDARDS_PROPTEST_CASES")
+            .or_else(|| env_usize("PROPTEST_CASES"))
+            .unwrap_or(256) as u32,
+        max_shrink_iters: env_usize("STANDARDS_PROPTEST_MAX_SHRINK_ITERS")
+            .or_else(|| env_usize("PROPTEST_MAX_SHRINK_ITERS"))
+            .unwrap_or(4096) as u32,
+        ..ProptestConfig::default()
+    }
+}
+
+fn env_usize(name: &str) -> Option<usize> {
+    std::env::var(name).ok()?.parse().ok()
+}
+
 fn principal(index: u8) -> Principal {
     if index == 0 {
         Principal::Contract(ContractId::from_bytes([0u8; 32]))
@@ -2639,11 +2655,7 @@ fn cap_op_strategy() -> impl Strategy<Value = CapOp> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 256,
-        max_shrink_iters: 4096,
-        ..ProptestConfig::default()
-    })]
+    #![proptest_config(standards_proptest_config())]
 
     #[test]
     fn drc20_state_matches_model_and_failed_calls_are_atomic(
