@@ -142,12 +142,23 @@ impl TimelockController {
         now: u64,
     ) -> u64 {
         self.access.assert_role(EXECUTOR_ROLE, caller);
-        let payload = self.timelock.execute(id, now);
-        let bytes: [u8; 8] = payload
+        let op = self
+            .timelock
+            .get(id)
+            .unwrap_or_else(|| panic!("{}", error::OPERATION_UNKNOWN));
+        if op.done {
+            panic!("{}", error::OPERATION_DONE);
+        }
+        if now < op.ready_at {
+            panic!("{}", error::DELAY_NOT_ELAPSED);
+        }
+        let bytes: [u8; 8] = op
+            .payload
             .as_slice()
             .try_into()
             .unwrap_or_else(|_| panic!("{}", error::INVALID_OPERATION));
         let min_delay = u64::from_be_bytes(bytes);
+        self.timelock.execute(id, now);
         self.set_min_delay(self.self_principal, min_delay);
         min_delay
     }

@@ -105,6 +105,14 @@ impl Checkpoints {
         self.checkpoints.push(Checkpoint { key, value });
     }
 
+    fn assert_can_push(&self, key: u64) {
+        if let Some(last) = self.checkpoints.last() {
+            if key < last.key {
+                panic!("Checkpoints: non-monotonic key");
+            }
+        }
+    }
+
     /// Returns value at or before `key`.
     pub fn get_at(&self, key: u64) -> u64 {
         let mut low = 0usize;
@@ -195,36 +203,64 @@ impl VotingUnits {
             return;
         }
 
-        if let Some(from) = from {
+        let from_next = if let Some(from) = from {
             let current = self.latest_votes(from);
             if current < amount {
                 panic!("VotingUnits: insufficient units");
             }
-            self.write_votes(from, timepoint, current - amount);
-        }
+            Some((from, current - amount))
+        } else {
+            None
+        };
 
-        if let Some(to) = to {
+        let to_next = if let Some(to) = to {
             let current = self.latest_votes(to);
             let next = current.checked_add(amount).expect(error::OVERFLOW);
-            self.write_votes(to, timepoint, next);
-        }
+            Some((to, next))
+        } else {
+            None
+        };
 
-        match (from, to) {
-            (None, Some(_)) => {
-                let next = self
-                    .latest_total_supply()
+        let total_next = match (from, to) {
+            (None, Some(_)) => Some(
+                self.latest_total_supply()
                     .checked_add(amount)
-                    .expect(error::OVERFLOW);
-                self.total_supply.push(timepoint, next);
-            }
+                    .expect(error::OVERFLOW),
+            ),
             (Some(_), None) => {
                 let current = self.latest_total_supply();
                 if current < amount {
                     panic!("VotingUnits: total supply underflow");
                 }
-                self.total_supply.push(timepoint, current - amount);
+                Some(current - amount)
             }
-            _ => {}
+            _ => None,
+        };
+
+        if let Some((from, _)) = from_next {
+            self.assert_can_write_votes(from, timepoint);
+        }
+        if let Some((to, _)) = to_next {
+            self.assert_can_write_votes(to, timepoint);
+        }
+        if total_next.is_some() {
+            self.total_supply.assert_can_push(timepoint);
+        }
+
+        if let Some((from, value)) = from_next {
+            self.write_votes(from, timepoint, value);
+        }
+        if let Some((to, value)) = to_next {
+            self.write_votes(to, timepoint, value);
+        }
+        if let Some(value) = total_next {
+            self.total_supply.push(timepoint, value);
+        }
+    }
+
+    fn assert_can_write_votes(&self, account: Principal, timepoint: u64) {
+        if let Some(trace) = self.accounts.get(&account) {
+            trace.assert_can_push(timepoint);
         }
     }
 }

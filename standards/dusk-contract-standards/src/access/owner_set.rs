@@ -28,12 +28,17 @@ impl OwnerSet {
         if !self.owners.is_empty() {
             panic!("{}", error::ALREADY_INITIALIZED);
         }
+        let mut next = BTreeSet::new();
         for owner in owners {
-            self.add_initial_owner(owner);
+            if owner.is_zero() {
+                panic!("{}", error::ZERO_PRINCIPAL);
+            }
+            next.insert(owner);
         }
-        if self.owners.is_empty() {
+        if next.is_empty() {
             panic!("{}", error::INVALID_OWNER);
         }
+        self.owners = next;
     }
 
     /// Returns true when `principal` is an owner.
