@@ -6,6 +6,7 @@ RUSK_URL="${RUSK_URL:-http://localhost:8080}"
 RUSK_WALLET_BIN="${RUSK_WALLET_BIN:-$(command -v rusk-wallet || true)}"
 WALLET_DIR="${WALLET_DIR:-${ROOT_DIR}/target/dusk-contract-standards-wallet}"
 WALLET_PASSWORD="${WALLET_PASSWORD:-password}"
+WALLET_RESTORE_FILE="${WALLET_RESTORE_FILE:-}"
 DEPLOY_NONCE_BASE="${DEPLOY_NONCE_BASE:-100}"
 
 cd "$ROOT_DIR"
@@ -61,6 +62,21 @@ if ! command -v xxd >/dev/null 2>&1; then
 fi
 
 mkdir -p "$WALLET_DIR"
+
+if [[ -n "$WALLET_RESTORE_FILE" && ! -f "$WALLET_DIR/wallet.keystore.json" ]]; then
+  if [[ ! -f "$WALLET_RESTORE_FILE" ]]; then
+    echo "WALLET_RESTORE_FILE does not exist: ${WALLET_RESTORE_FILE}" >&2
+    exit 2
+  fi
+
+  echo "Restoring local smoke wallet from ${WALLET_RESTORE_FILE}"
+  RUSK_WALLET_PWD="$WALLET_PASSWORD" "$RUSK_WALLET_BIN" \
+    --wallet-dir "$WALLET_DIR" \
+    --state "$RUSK_URL" \
+    --prover "$RUSK_URL" \
+    --password "$WALLET_PASSWORD" \
+    restore -f "$WALLET_RESTORE_FILE"
+fi
 
 encode_args() {
   cargo run -q -p dusk-contract-standards --example encode_local_smoke_args -- "$@"

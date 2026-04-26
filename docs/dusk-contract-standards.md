@@ -262,3 +262,15 @@ test, serializes deploy-time init arguments using the Dusk ABI serializer,
 deploys the four example contracts with `rusk-wallet`, and queries one
 exported function from each deployment. `WALLET_DIR` should point at a funded
 local wallet profile.
+
+For an isolated local smoke wallet, set `WALLET_RESTORE_FILE` to a funded
+wallet backup. The script restores it into `WALLET_DIR` when the directory does
+not already contain `wallet.keystore.json`:
+
+```sh
+RUSK_URL=http://127.0.0.1:18080 \
+RUSK_WALLET_BIN=/path/to/rusk-wallet \
+WALLET_DIR=target/rusk-local-smoke/wallet \
+WALLET_RESTORE_FILE=/path/to/wallet.dat \
+./scripts/dusk-contract-standards-local-smoke.sh
+```
