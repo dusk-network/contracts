@@ -74,9 +74,9 @@ impl OwnerSet {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        let principal = authorizer.require_signed(authorization);
-        self.assert_owner(principal);
-        principal
+        authorizer.require_signed_if(authorization, |principal| {
+            self.is_owner(principal)
+        })
     }
 
     /// Authorizes any owner through runtime context or an action-bound signed
@@ -113,10 +113,11 @@ impl OwnerSet {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        let principal =
-            authorizer.require_signed_action(authorization, envelope);
-        self.assert_owner(principal);
-        principal
+        authorizer.require_signed_action_if(
+            authorization,
+            envelope,
+            |principal| self.is_owner(principal),
+        )
     }
 
     /// Returns all owners in stable order.
