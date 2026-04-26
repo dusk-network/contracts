@@ -2,29 +2,38 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use dusk_contract_standards::access::{
-    AccessControl, OwnerSet, DEFAULT_ADMIN_ROLE,
+    AccessControl, Ownable2Step, OwnerSet, DEFAULT_ADMIN_ROLE,
 };
 use dusk_contract_standards::auth::{
     ActionEnvelope, AuthorizationManager, AuthorizedAction,
-    MoonlightAuthorization, SignedAuthorization,
+    MoonlightAuthorization, PhoenixSignatureAuthorization, SignedAuthorization,
 };
-use dusk_contract_standards::core::{CallContext, Principal};
-use dusk_contract_standards::governance::Timelock;
+use dusk_contract_standards::core::{
+    CallContext, NonceEntry, NonceManager, Principal, ReplayEntry, ReplayGuard,
+};
+use dusk_contract_standards::governance::{
+    Timelock, TimelockController, EXECUTOR_ROLE, PROPOSER_ROLE,
+};
 use dusk_contract_standards::proxy::UpgradeAdmin;
 use dusk_contract_standards::token::drc20::{
     Allowance, ApproveCall, BalanceOf as BalanceOf20, DecreaseAllowanceCall,
-    Drc20, IncreaseAllowanceCall, Init as Init20, InitBalance,
-    TransferCall as Transfer20, TransferFromCall,
+    Drc20, IncreaseAllowanceCall, Init as Init20, InitBalance, SupplyCap,
+    TransferCall as Transfer20, TransferFromCall, VotingUnits,
 };
 use dusk_contract_standards::token::drc721::{
     ApproveCall as Approve721, BalanceOf as BalanceOf721, Drc721, GetApproved,
-    Init as Init721, InitToken, IsApprovedForAll, OwnerOf,
-    SetApprovalForAllCall, TokensOf, TransferFromCall as Transfer721,
+    Init as Init721, InitToken, IsApprovedForAll, OwnerOf, RoyaltyInfo,
+    RoyaltyRegistry, SetApprovalForAllCall, TokensOf,
+    TransferFromCall as Transfer721, MAX_BASIS_POINTS,
 };
 use dusk_core::abi::ContractId;
 use dusk_core::signatures::bls::{
     PublicKey as BlsPublicKey, SecretKey as BlsSecretKey,
 };
+use dusk_core::signatures::schnorr::{
+    PublicKey as SchnorrPublicKey, SecretKey as SchnorrSecretKey,
+};
+use dusk_core::JubJubScalar;
 use proptest::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -67,6 +76,10 @@ fn amount_strategy() -> BoxedStrategy<u64> {
 fn moonlight_secret(seed: u64) -> BlsSecretKey {
     let mut rng = StdRng::seed_from_u64(seed);
     BlsSecretKey::random(&mut rng)
+}
+
+fn phoenix_secret(seed: u64) -> SchnorrSecretKey {
+    SchnorrSecretKey::from(JubJubScalar::from(seed))
 }
 
 #[derive(Clone, Debug)]
@@ -818,6 +831,59 @@ fn signed_action(
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+enum PhoenixAuthCase {
+    Good,
+    WrongContract,
+    WrongDomain,
+    WrongAction,
+    WrongPayload,
+    Expired,
+    FutureNonce,
+    BadPrincipal,
+    BadSignature,
+    WrongExpected,
+    OwnerSetNonOwner,
+    RoleNonMember,
+    AdminMismatch,
+    ReplayKeyUsed,
+}
+
+fn phoenix_auth_case_strategy() -> impl Strategy<Value = PhoenixAuthCase> {
+    prop_oneof![
+        Just(PhoenixAuthCase::Good),
+        Just(PhoenixAuthCase::WrongContract),
+        Just(PhoenixAuthCase::WrongDomain),
+        Just(PhoenixAuthCase::WrongAction),
+        Just(PhoenixAuthCase::WrongPayload),
+        Just(PhoenixAuthCase::Expired),
+        Just(PhoenixAuthCase::FutureNonce),
+        Just(PhoenixAuthCase::BadPrincipal),
+        Just(PhoenixAuthCase::BadSignature),
+        Just(PhoenixAuthCase::WrongExpected),
+        Just(PhoenixAuthCase::OwnerSetNonOwner),
+        Just(PhoenixAuthCase::RoleNonMember),
+        Just(PhoenixAuthCase::AdminMismatch),
+        Just(PhoenixAuthCase::ReplayKeyUsed),
+    ]
+}
+
+fn phoenix_signed_action(
+    secret: &SchnorrSecretKey,
+    public: SchnorrPublicKey,
+    action: AuthorizedAction,
+    replay_key: Option<[u8; 32]>,
+    seed: u64,
+) -> SignedAuthorization {
+    let mut rng = StdRng::seed_from_u64(seed);
+    SignedAuthorization::Phoenix(PhoenixSignatureAuthorization {
+        action,
+        public_key: public,
+        signature: secret.sign(&mut rng, action.message_hash()),
+        replay_key,
+    })
+}
+
 fn authorization_probe(case: AuthCase) -> (bool, u64) {
     let secret = moonlight_secret(31);
     let public = BlsPublicKey::from(&secret);
@@ -939,6 +1005,141 @@ fn authorization_probe(case: AuthCase) -> (bool, u64) {
     (result, authorizations.nonce(signer, domain))
 }
 
+fn phoenix_authorization_probe(case: PhoenixAuthCase) -> (bool, u64, bool) {
+    let secret = phoenix_secret(43);
+    let public = SchnorrPublicKey::from(&secret);
+    let signer = Principal::phoenix_public_key(&public);
+    let contract = contract_id(44);
+    let domain = [45u8; 32];
+    let action_id = [46u8; 32];
+    let payload_hash = [47u8; 32];
+    let replay_key = [48u8; 32];
+    let envelope =
+        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let mut action = AuthorizedAction {
+        contract,
+        domain,
+        action_id,
+        nonce: 0,
+        expires_at: 100,
+        principal: signer,
+        payload_hash,
+    };
+    let mut now = 100;
+    let expected = match case {
+        PhoenixAuthCase::Good | PhoenixAuthCase::ReplayKeyUsed => signer,
+        PhoenixAuthCase::WrongExpected => principal(1),
+        PhoenixAuthCase::WrongContract => {
+            action.contract = contract_id(49);
+            signer
+        }
+        PhoenixAuthCase::WrongDomain => {
+            action.domain = [50u8; 32];
+            signer
+        }
+        PhoenixAuthCase::WrongAction => {
+            action.action_id = [51u8; 32];
+            signer
+        }
+        PhoenixAuthCase::WrongPayload => {
+            action.payload_hash = [52u8; 32];
+            signer
+        }
+        PhoenixAuthCase::Expired => {
+            now = 101;
+            signer
+        }
+        PhoenixAuthCase::FutureNonce => {
+            action.nonce = 1;
+            signer
+        }
+        PhoenixAuthCase::BadPrincipal => {
+            action.principal = principal(2);
+            signer
+        }
+        PhoenixAuthCase::BadSignature
+        | PhoenixAuthCase::OwnerSetNonOwner
+        | PhoenixAuthCase::RoleNonMember
+        | PhoenixAuthCase::AdminMismatch => signer,
+    };
+
+    let signed = if matches!(case, PhoenixAuthCase::BadSignature) {
+        let original = action;
+        action.payload_hash = [53u8; 32];
+        let mut rng = StdRng::seed_from_u64(55);
+        SignedAuthorization::Phoenix(PhoenixSignatureAuthorization {
+            action,
+            public_key: public,
+            signature: secret.sign(&mut rng, original.message_hash()),
+            replay_key: Some(replay_key),
+        })
+    } else {
+        phoenix_signed_action(&secret, public, action, Some(replay_key), 56)
+    };
+
+    let mut authorizations = AuthorizationManager::new();
+    if matches!(case, PhoenixAuthCase::ReplayKeyUsed) {
+        authorizations.import_replay_entries([ReplayEntry {
+            principal: signer,
+            key: replay_key,
+        }]);
+    }
+
+    let result = catch_unwind(AssertUnwindSafe(|| match case {
+        PhoenixAuthCase::OwnerSetNonOwner => {
+            let mut owners = OwnerSet::new();
+            owners.init([principal(1)]);
+            owners.authorize_owner_action(
+                &mut authorizations,
+                CallContext::none(),
+                Some(&signed),
+                envelope,
+                now,
+            );
+        }
+        PhoenixAuthCase::RoleNonMember => {
+            let checked_role = role(57);
+            let mut access = AccessControl::new();
+            access.init_admin(principal(1));
+            access.grant_role(principal(1), checked_role, principal(2));
+            access.authorize_role_action(
+                checked_role,
+                &mut authorizations,
+                CallContext::none(),
+                Some(&signed),
+                envelope,
+                now,
+            );
+        }
+        PhoenixAuthCase::AdminMismatch => {
+            let upgrade =
+                UpgradeAdmin::new(principal(1), contract_id(58), 0, 0);
+            upgrade.authorize_admin_action(
+                &mut authorizations,
+                CallContext::none(),
+                Some(&signed),
+                envelope,
+                now,
+            );
+        }
+        _ => {
+            authorizations.authorize_principal_action(
+                expected,
+                CallContext::none(),
+                Some(&signed),
+                envelope,
+                now,
+            );
+        }
+    }))
+    .is_ok();
+    (
+        result,
+        authorizations.nonce(signer, domain),
+        authorizations.replay_used(signer, replay_key),
+    )
+}
+
 #[derive(Clone, Debug)]
 enum OwnerSetOp {
     Add {
@@ -1026,6 +1227,114 @@ fn apply_owner_set(owners: &mut OwnerSet, op: &OwnerSetOp) -> bool {
             old_owner,
             new_owner,
         } => owners.replace_owner(caller, old_owner, new_owner),
+    }))
+    .is_ok()
+}
+
+#[derive(Clone, Debug)]
+enum Ownable2StepOp {
+    Transfer {
+        caller: Principal,
+        new_owner: Principal,
+    },
+    Accept {
+        caller: Principal,
+    },
+    Renounce {
+        caller: Principal,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Ownable2StepSnapshot {
+    owner: Option<Principal>,
+    pending_owner: Option<Principal>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Ownable2StepModel {
+    owner: Option<Principal>,
+    pending_owner: Option<Principal>,
+}
+
+impl Ownable2StepModel {
+    fn new(owner: Principal) -> Self {
+        Self {
+            owner: Some(owner),
+            pending_owner: None,
+        }
+    }
+
+    fn apply(&mut self, op: &Ownable2StepOp) -> bool {
+        match *op {
+            Ownable2StepOp::Transfer { caller, new_owner } => {
+                if self.owner != Some(caller) || new_owner.is_zero() {
+                    return false;
+                }
+                self.pending_owner = Some(new_owner);
+                true
+            }
+            Ownable2StepOp::Accept { caller } => {
+                if self.pending_owner != Some(caller) {
+                    return false;
+                }
+                self.owner = Some(caller);
+                self.pending_owner = None;
+                true
+            }
+            Ownable2StepOp::Renounce { caller } => {
+                if self.owner != Some(caller) {
+                    return false;
+                }
+                self.owner = None;
+                self.pending_owner = None;
+                true
+            }
+        }
+    }
+
+    const fn snapshot(&self) -> Ownable2StepSnapshot {
+        Ownable2StepSnapshot {
+            owner: self.owner,
+            pending_owner: self.pending_owner,
+        }
+    }
+}
+
+fn ownable2_step_op_strategy() -> impl Strategy<Value = Ownable2StepOp> {
+    let account = principal_strategy();
+    prop_oneof![
+        (account.clone(), account.clone()).prop_map(|(caller, new_owner)| {
+            Ownable2StepOp::Transfer { caller, new_owner }
+        },),
+        account
+            .clone()
+            .prop_map(|caller| Ownable2StepOp::Accept { caller }),
+        account.prop_map(|caller| Ownable2StepOp::Renounce { caller }),
+    ]
+}
+
+fn ownable2_step_snapshot(ownable: &Ownable2Step) -> Ownable2StepSnapshot {
+    Ownable2StepSnapshot {
+        owner: ownable.owner(),
+        pending_owner: ownable.pending_owner(),
+    }
+}
+
+fn apply_ownable2_step(
+    ownable: &mut Ownable2Step,
+    op: &Ownable2StepOp,
+) -> bool {
+    catch_unwind(AssertUnwindSafe(|| match *op {
+        Ownable2StepOp::Transfer { caller, new_owner } => {
+            ownable.transfer_ownership(caller, new_owner);
+        }
+        Ownable2StepOp::Accept { caller } => {
+            ownable.accept_ownership(caller);
+        }
+        Ownable2StepOp::Renounce { caller } => {
+            ownable.renounce_ownership(caller);
+        }
     }))
     .is_ok()
 }
@@ -1413,6 +1722,13 @@ fn apply_timelock(timelock: &mut Timelock, op: &TimelockOp) -> bool {
     .is_ok()
 }
 
+fn bad_min_delay_payload_strategy() -> impl Strategy<Value = Vec<u8>> {
+    prop_oneof![
+        prop::collection::vec(any::<u8>(), 0..8),
+        prop::collection::vec(any::<u8>(), 9..17),
+    ]
+}
+
 #[derive(Clone, Debug)]
 enum UpgradeOp {
     Prepare {
@@ -1625,6 +1941,703 @@ fn is_zero_contract_id(id: ContractId) -> bool {
     id.to_bytes().iter().all(|byte| *byte == 0)
 }
 
+#[derive(Clone, Debug)]
+enum NonceReplayOp {
+    Consume {
+        principal: Principal,
+        domain: [u8; 32],
+        nonce: u64,
+    },
+    UseNext {
+        principal: Principal,
+        domain: [u8; 32],
+    },
+    InvalidateUntil {
+        principal: Principal,
+        domain: [u8; 32],
+        nonce: u64,
+    },
+    ImportNonce {
+        entries: Vec<NonceEntry>,
+    },
+    ConsumeReplay {
+        principal: Principal,
+        key: [u8; 32],
+    },
+    ImportReplay {
+        entries: Vec<ReplayEntry>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct NonceReplaySnapshot {
+    nonces: Vec<NonceEntry>,
+    replay_entries: Vec<ReplayEntry>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct NonceReplayModel {
+    nonces: BTreeMap<(Principal, [u8; 32]), u64>,
+    replay_entries: BTreeSet<(Principal, [u8; 32])>,
+}
+
+impl NonceReplayModel {
+    fn current(&self, principal: Principal, domain: [u8; 32]) -> u64 {
+        self.nonces.get(&(principal, domain)).copied().unwrap_or(0)
+    }
+
+    fn apply(&mut self, op: &NonceReplayOp) -> bool {
+        match op {
+            NonceReplayOp::Consume {
+                principal,
+                domain,
+                nonce,
+            } => {
+                if self.current(*principal, *domain) != *nonce {
+                    return false;
+                }
+                let Some(next) = nonce.checked_add(1) else {
+                    return false;
+                };
+                self.nonces.insert((*principal, *domain), next);
+                true
+            }
+            NonceReplayOp::UseNext { principal, domain } => {
+                let current = self.current(*principal, *domain);
+                let Some(next) = current.checked_add(1) else {
+                    return false;
+                };
+                self.nonces.insert((*principal, *domain), next);
+                true
+            }
+            NonceReplayOp::InvalidateUntil {
+                principal,
+                domain,
+                nonce,
+            } => {
+                if *nonce < self.current(*principal, *domain) {
+                    return false;
+                }
+                self.nonces.insert((*principal, *domain), *nonce);
+                true
+            }
+            NonceReplayOp::ImportNonce { entries } => {
+                for entry in entries {
+                    let current = self.current(entry.principal, entry.domain);
+                    if entry.nonce > current {
+                        self.nonces.insert(
+                            (entry.principal, entry.domain),
+                            entry.nonce,
+                        );
+                    }
+                }
+                true
+            }
+            NonceReplayOp::ConsumeReplay { principal, key } => {
+                self.replay_entries.insert((*principal, *key))
+            }
+            NonceReplayOp::ImportReplay { entries } => {
+                for entry in entries {
+                    self.replay_entries.insert((entry.principal, entry.key));
+                }
+                true
+            }
+        }
+    }
+
+    fn snapshot(&self) -> NonceReplaySnapshot {
+        NonceReplaySnapshot {
+            nonces: self
+                .nonces
+                .iter()
+                .map(|((principal, domain), nonce)| NonceEntry {
+                    principal: *principal,
+                    domain: *domain,
+                    nonce: *nonce,
+                })
+                .collect(),
+            replay_entries: self
+                .replay_entries
+                .iter()
+                .map(|(principal, key)| ReplayEntry {
+                    principal: *principal,
+                    key: *key,
+                })
+                .collect(),
+        }
+    }
+}
+
+fn nonce_replay_op_strategy() -> impl Strategy<Value = NonceReplayOp> {
+    let principal = principal_strategy();
+    let domain = (0u8..=4).prop_map(|i| [i; 32]);
+    let nonce = prop_oneof![
+        12 => 0u64..=12,
+        1 => Just(u64::MAX),
+        1 => (0u64..=4).prop_map(|d| u64::MAX - d),
+    ];
+    let nonce_entry = (principal.clone(), domain.clone(), nonce.clone())
+        .prop_map(|(principal, domain, nonce)| NonceEntry {
+            principal,
+            domain,
+            nonce,
+        });
+    let replay_entry = (principal.clone(), domain.clone())
+        .prop_map(|(principal, key)| ReplayEntry { principal, key });
+    prop_oneof![
+        (principal.clone(), domain.clone(), nonce.clone()).prop_map(
+            |(principal, domain, nonce)| NonceReplayOp::Consume {
+                principal,
+                domain,
+                nonce,
+            }
+        ),
+        (principal.clone(), domain.clone()).prop_map(|(principal, domain)| {
+            NonceReplayOp::UseNext { principal, domain }
+        },),
+        (principal.clone(), domain.clone(), nonce).prop_map(
+            |(principal, domain, nonce)| NonceReplayOp::InvalidateUntil {
+                principal,
+                domain,
+                nonce,
+            },
+        ),
+        prop::collection::vec(nonce_entry, 0..5)
+            .prop_map(|entries| NonceReplayOp::ImportNonce { entries }),
+        (principal, domain).prop_map(|(principal, key)| {
+            NonceReplayOp::ConsumeReplay { principal, key }
+        }),
+        prop::collection::vec(replay_entry, 0..5)
+            .prop_map(|entries| NonceReplayOp::ImportReplay { entries }),
+    ]
+}
+
+fn nonce_replay_snapshot(
+    nonces: &NonceManager,
+    replays: &ReplayGuard,
+) -> NonceReplaySnapshot {
+    NonceReplaySnapshot {
+        nonces: nonces.entries(),
+        replay_entries: replays.entries(),
+    }
+}
+
+fn apply_nonce_replay(
+    nonces: &mut NonceManager,
+    replays: &mut ReplayGuard,
+    op: &NonceReplayOp,
+) -> bool {
+    catch_unwind(AssertUnwindSafe(|| match op {
+        NonceReplayOp::Consume {
+            principal,
+            domain,
+            nonce,
+        } => {
+            nonces.consume(*principal, *domain, *nonce);
+        }
+        NonceReplayOp::UseNext { principal, domain } => {
+            nonces.use_next(*principal, *domain);
+        }
+        NonceReplayOp::InvalidateUntil {
+            principal,
+            domain,
+            nonce,
+        } => nonces.invalidate_until(*principal, *domain, *nonce),
+        NonceReplayOp::ImportNonce { entries } => {
+            nonces.import_entries(entries.iter().copied());
+        }
+        NonceReplayOp::ConsumeReplay { principal, key } => {
+            replays.consume(*principal, *key);
+        }
+        NonceReplayOp::ImportReplay { entries } => {
+            replays.import_entries(entries.iter().copied());
+        }
+    }))
+    .is_ok()
+}
+
+#[derive(Clone, Debug)]
+enum VotingOp {
+    Move {
+        from: Option<Principal>,
+        to: Option<Principal>,
+        amount: u64,
+        timepoint: u64,
+    },
+    Write {
+        account: Principal,
+        timepoint: u64,
+        value: u64,
+    },
+}
+
+#[derive(Clone, Debug, Default)]
+struct CheckpointModel {
+    entries: Vec<(u64, u64)>,
+}
+
+impl CheckpointModel {
+    fn latest(&self) -> u64 {
+        self.entries.last().map(|(_, value)| *value).unwrap_or(0)
+    }
+
+    fn push(&mut self, timepoint: u64, value: u64) -> bool {
+        if let Some(last) = self.entries.last_mut() {
+            if timepoint < last.0 {
+                return false;
+            }
+            if timepoint == last.0 {
+                last.1 = value;
+                return true;
+            }
+        }
+        self.entries.push((timepoint, value));
+        true
+    }
+
+    fn get_at(&self, timepoint: u64) -> u64 {
+        self.entries
+            .iter()
+            .rev()
+            .find_map(|(key, value)| (*key <= timepoint).then_some(*value))
+            .unwrap_or(0)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct VotingModel {
+    accounts: BTreeMap<Principal, CheckpointModel>,
+    total_supply: CheckpointModel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VotingSnapshot {
+    latest_votes: Vec<(Principal, u64)>,
+    past_votes: Vec<(Principal, u64, u64)>,
+    latest_total: u64,
+    past_total: Vec<(u64, u64)>,
+}
+
+impl VotingModel {
+    fn latest_votes(&self, account: Principal) -> u64 {
+        self.accounts
+            .get(&account)
+            .map(CheckpointModel::latest)
+            .unwrap_or(0)
+    }
+
+    fn write_votes(
+        &mut self,
+        account: Principal,
+        timepoint: u64,
+        value: u64,
+    ) -> bool {
+        self.accounts
+            .entry(account)
+            .or_default()
+            .push(timepoint, value)
+    }
+
+    fn apply(&mut self, op: &VotingOp) -> bool {
+        match *op {
+            VotingOp::Write {
+                account,
+                timepoint,
+                value,
+            } => self.write_votes(account, timepoint, value),
+            VotingOp::Move {
+                from,
+                to,
+                amount,
+                timepoint,
+            } => {
+                if amount == 0 || from == to {
+                    return true;
+                }
+                let from_next = if let Some(from) = from {
+                    let current = self.latest_votes(from);
+                    if current < amount {
+                        return false;
+                    }
+                    Some((from, current - amount))
+                } else {
+                    None
+                };
+                let to_next = if let Some(to) = to {
+                    let Some(next) = self.latest_votes(to).checked_add(amount)
+                    else {
+                        return false;
+                    };
+                    Some((to, next))
+                } else {
+                    None
+                };
+                let total_next = match (from, to) {
+                    (None, Some(_)) => {
+                        let Some(next) =
+                            self.total_supply.latest().checked_add(amount)
+                        else {
+                            return false;
+                        };
+                        Some(next)
+                    }
+                    (Some(_), None) => {
+                        let current = self.total_supply.latest();
+                        if current < amount {
+                            return false;
+                        }
+                        Some(current - amount)
+                    }
+                    _ => None,
+                };
+
+                let mut next = self.clone();
+                if let Some((account, value)) = from_next {
+                    if !next.write_votes(account, timepoint, value) {
+                        return false;
+                    }
+                }
+                if let Some((account, value)) = to_next {
+                    if !next.write_votes(account, timepoint, value) {
+                        return false;
+                    }
+                }
+                if let Some(value) = total_next {
+                    if !next.total_supply.push(timepoint, value) {
+                        return false;
+                    }
+                }
+                *self = next;
+                true
+            }
+        }
+    }
+
+    fn snapshot(
+        &self,
+        accounts: &[Principal],
+        timepoints: &[u64],
+    ) -> VotingSnapshot {
+        VotingSnapshot {
+            latest_votes: accounts
+                .iter()
+                .copied()
+                .map(|account| (account, self.latest_votes(account)))
+                .collect(),
+            past_votes: accounts
+                .iter()
+                .copied()
+                .flat_map(|account| {
+                    timepoints.iter().copied().map(move |timepoint| {
+                        let value = self
+                            .accounts
+                            .get(&account)
+                            .map(|trace| trace.get_at(timepoint))
+                            .unwrap_or(0);
+                        (account, timepoint, value)
+                    })
+                })
+                .collect(),
+            latest_total: self.total_supply.latest(),
+            past_total: timepoints
+                .iter()
+                .copied()
+                .map(|timepoint| {
+                    (timepoint, self.total_supply.get_at(timepoint))
+                })
+                .collect(),
+        }
+    }
+}
+
+fn voting_op_strategy() -> impl Strategy<Value = VotingOp> {
+    let account = principal_strategy();
+    let account_or_none =
+        prop_oneof![Just(None), account.clone().prop_map(Some)];
+    let amount = amount_strategy();
+    let timepoint = prop_oneof![
+        12 => 0u64..=24,
+        1 => (0u64..=4).prop_map(|d| u64::MAX - d),
+    ];
+    prop_oneof![
+        (
+            account_or_none.clone(),
+            account_or_none,
+            amount.clone(),
+            timepoint.clone()
+        )
+            .prop_map(|(from, to, amount, timepoint)| VotingOp::Move {
+                from,
+                to,
+                amount,
+                timepoint,
+            }),
+        (account, timepoint, amount).prop_map(|(account, timepoint, value)| {
+            VotingOp::Write {
+                account,
+                timepoint,
+                value,
+            }
+        },),
+    ]
+}
+
+fn voting_snapshot(
+    votes: &VotingUnits,
+    accounts: &[Principal],
+    timepoints: &[u64],
+) -> VotingSnapshot {
+    VotingSnapshot {
+        latest_votes: accounts
+            .iter()
+            .copied()
+            .map(|account| (account, votes.latest_votes(account)))
+            .collect(),
+        past_votes: accounts
+            .iter()
+            .copied()
+            .flat_map(|account| {
+                timepoints.iter().copied().map(move |timepoint| {
+                    (account, timepoint, votes.past_votes(account, timepoint))
+                })
+            })
+            .collect(),
+        latest_total: votes.latest_total_supply(),
+        past_total: timepoints
+            .iter()
+            .copied()
+            .map(|timepoint| (timepoint, votes.past_total_supply(timepoint)))
+            .collect(),
+    }
+}
+
+fn apply_voting(votes: &mut VotingUnits, op: &VotingOp) -> bool {
+    catch_unwind(AssertUnwindSafe(|| match *op {
+        VotingOp::Move {
+            from,
+            to,
+            amount,
+            timepoint,
+        } => votes.move_units(from, to, amount, timepoint),
+        VotingOp::Write {
+            account,
+            timepoint,
+            value,
+        } => votes.write_votes(account, timepoint, value),
+    }))
+    .is_ok()
+}
+
+#[derive(Clone, Debug)]
+enum RoyaltyOp {
+    SetDefault { info: RoyaltyInfo },
+    ClearDefault,
+    SetToken { token_id: u64, info: RoyaltyInfo },
+    ClearToken { token_id: u64 },
+    Query { token_id: u64, sale_price: u64 },
+}
+
+#[derive(Clone, Debug, Default)]
+struct RoyaltyModel {
+    default: Option<RoyaltyInfo>,
+    tokens: BTreeMap<u64, RoyaltyInfo>,
+}
+
+type RoyaltyQuoteSnapshot = (u64, u64, Option<(Principal, u64)>);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RoyaltySnapshot {
+    default: Option<RoyaltyInfo>,
+    royalty_for: Vec<(u64, Option<RoyaltyInfo>)>,
+    quotes: Vec<RoyaltyQuoteSnapshot>,
+}
+
+impl RoyaltyModel {
+    fn royalty_for(&self, token_id: u64) -> Option<RoyaltyInfo> {
+        self.tokens.get(&token_id).copied().or(self.default)
+    }
+
+    fn quote(
+        &self,
+        token_id: u64,
+        sale_price: u64,
+    ) -> Option<(Principal, u64)> {
+        let Some(info) = self.royalty_for(token_id) else {
+            return Some((principal(0), 0));
+        };
+        let amount = sale_price.checked_mul(u64::from(info.basis_points))?
+            / u64::from(MAX_BASIS_POINTS);
+        Some((info.receiver, amount))
+    }
+
+    fn apply(&mut self, op: &RoyaltyOp) -> bool {
+        match *op {
+            RoyaltyOp::SetDefault { info } => {
+                if !valid_royalty(info) {
+                    return false;
+                }
+                self.default = Some(info);
+                true
+            }
+            RoyaltyOp::ClearDefault => {
+                self.default = None;
+                true
+            }
+            RoyaltyOp::SetToken { token_id, info } => {
+                if !valid_royalty(info) {
+                    return false;
+                }
+                self.tokens.insert(token_id, info);
+                true
+            }
+            RoyaltyOp::ClearToken { token_id } => {
+                self.tokens.remove(&token_id);
+                true
+            }
+            RoyaltyOp::Query {
+                token_id,
+                sale_price,
+            } => self.quote(token_id, sale_price).is_some(),
+        }
+    }
+
+    fn snapshot(
+        &self,
+        token_ids: &[u64],
+        sale_prices: &[u64],
+    ) -> RoyaltySnapshot {
+        RoyaltySnapshot {
+            default: self.default,
+            royalty_for: token_ids
+                .iter()
+                .copied()
+                .map(|token_id| (token_id, self.royalty_for(token_id)))
+                .collect(),
+            quotes: token_ids
+                .iter()
+                .copied()
+                .flat_map(|token_id| {
+                    sale_prices.iter().copied().map(move |sale_price| {
+                        (token_id, sale_price, self.quote(token_id, sale_price))
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
+fn valid_royalty(info: RoyaltyInfo) -> bool {
+    !info.receiver.is_zero() && info.basis_points <= MAX_BASIS_POINTS
+}
+
+fn royalty_info_strategy() -> BoxedStrategy<RoyaltyInfo> {
+    (principal_strategy(), 0u16..=10_500)
+        .prop_map(|(receiver, basis_points)| RoyaltyInfo {
+            receiver,
+            basis_points,
+        })
+        .boxed()
+}
+
+fn royalty_op_strategy() -> impl Strategy<Value = RoyaltyOp> {
+    let token_id = 0u64..=5;
+    let sale_price = prop_oneof![
+        12 => 0u64..=100_000,
+        2 => (0u64..=16).prop_map(|d| u64::MAX - d),
+        1 => Just(u64::MAX),
+    ];
+    let info = royalty_info_strategy();
+    prop_oneof![
+        info.clone().prop_map(|info| RoyaltyOp::SetDefault { info }),
+        Just(RoyaltyOp::ClearDefault),
+        (token_id.clone(), info).prop_map(|(token_id, info)| {
+            RoyaltyOp::SetToken { token_id, info }
+        }),
+        token_id
+            .clone()
+            .prop_map(|token_id| RoyaltyOp::ClearToken { token_id }),
+        (token_id, sale_price).prop_map(|(token_id, sale_price)| {
+            RoyaltyOp::Query {
+                token_id,
+                sale_price,
+            }
+        }),
+    ]
+}
+
+fn royalty_snapshot(
+    royalties: &RoyaltyRegistry,
+    token_ids: &[u64],
+    sale_prices: &[u64],
+) -> RoyaltySnapshot {
+    RoyaltySnapshot {
+        default: royalties.default_royalty(),
+        royalty_for: token_ids
+            .iter()
+            .copied()
+            .map(|token_id| (token_id, royalties.royalty_for(token_id)))
+            .collect(),
+        quotes: token_ids
+            .iter()
+            .copied()
+            .flat_map(|token_id| {
+                sale_prices.iter().copied().map(move |sale_price| {
+                    let quote = catch_unwind(AssertUnwindSafe(|| {
+                        royalties.royalty_info(token_id, sale_price)
+                    }))
+                    .ok()
+                    .map(|quote| (quote.receiver, quote.amount));
+                    (token_id, sale_price, quote)
+                })
+            })
+            .collect(),
+    }
+}
+
+fn apply_royalty(royalties: &mut RoyaltyRegistry, op: &RoyaltyOp) -> bool {
+    catch_unwind(AssertUnwindSafe(|| match *op {
+        RoyaltyOp::SetDefault { info } => royalties.set_default_royalty(info),
+        RoyaltyOp::ClearDefault => royalties.clear_default_royalty(),
+        RoyaltyOp::SetToken { token_id, info } => {
+            royalties.set_token_royalty(token_id, info);
+        }
+        RoyaltyOp::ClearToken { token_id } => {
+            royalties.clear_token_royalty(token_id)
+        }
+        RoyaltyOp::Query {
+            token_id,
+            sale_price,
+        } => {
+            royalties.royalty_info(token_id, sale_price);
+        }
+    }))
+    .is_ok()
+}
+
+#[derive(Clone, Debug)]
+enum CapOp {
+    AssertMint { current_supply: u64, amount: u64 },
+    SetCap { current_supply: u64, cap: u64 },
+}
+
+fn cap_op_strategy() -> impl Strategy<Value = CapOp> {
+    let amount = amount_strategy();
+    prop_oneof![
+        (amount.clone(), amount.clone()).prop_map(
+            |(current_supply, amount)| CapOp::AssertMint {
+                current_supply,
+                amount,
+            },
+        ),
+        (amount.clone(), amount).prop_map(|(current_supply, cap)| {
+            CapOp::SetCap {
+                current_supply,
+                cap,
+            }
+        }),
+    ]
+}
+
 proptest! {
     #![proptest_config(ProptestConfig {
         cases: 256,
@@ -1732,6 +2745,27 @@ proptest! {
     }
 
     #[test]
+    fn phoenix_authorization_negative_matrix_preserves_nonce_and_replay(
+        case in phoenix_auth_case_strategy(),
+    ) {
+        let (ok, nonce, replay_used) = phoenix_authorization_probe(case);
+        let expected_ok = matches!(case, PhoenixAuthCase::Good);
+        prop_assert_eq!(ok, expected_ok, "Phoenix authorization case diverged: {:?}", case);
+        prop_assert_eq!(
+            nonce,
+            if expected_ok { 1 } else { 0 },
+            "Phoenix authorization case moved nonce incorrectly: {:?}",
+            case,
+        );
+        prop_assert_eq!(
+            replay_used,
+            matches!(case, PhoenixAuthCase::Good | PhoenixAuthCase::ReplayKeyUsed),
+            "Phoenix authorization case moved replay state incorrectly: {:?}",
+            case,
+        );
+    }
+
+    #[test]
     fn owner_set_state_matches_model_and_failed_calls_are_atomic(
         ops in prop::collection::vec(owner_set_op_strategy(), 0..120),
     ) {
@@ -1759,6 +2793,85 @@ proptest! {
                     owners.owners(),
                     before,
                     "failed owner-set operation mutated state: {:?}",
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn owner_set_init_rejects_invalid_inputs_without_partial_state(
+        initial_owners in prop::collection::vec(principal_strategy(), 0..16),
+    ) {
+        let mut expected = BTreeSet::new();
+        let mut has_zero = false;
+        for owner in &initial_owners {
+            has_zero |= owner.is_zero();
+            expected.insert(*owner);
+        }
+        let expected_ok = !has_zero && !expected.is_empty();
+
+        let mut owners = OwnerSet::new();
+        let actual_ok = catch_unwind(AssertUnwindSafe(|| {
+            owners.init(initial_owners.clone());
+        }))
+        .is_ok();
+
+        prop_assert_eq!(actual_ok, expected_ok);
+        if expected_ok {
+            prop_assert_eq!(
+                owners.owners(),
+                expected.iter().copied().collect::<Vec<_>>(),
+            );
+            prop_assert!(
+                catch_unwind(AssertUnwindSafe(|| {
+                    owners.init([principal(3)]);
+                }))
+                .is_err(),
+                "successful initialization allowed a second init",
+            );
+        } else {
+            prop_assert!(
+                owners.is_empty(),
+                "failed initialization left partial owner state",
+            );
+            prop_assert!(
+                catch_unwind(AssertUnwindSafe(|| {
+                    owners.init([principal(1)]);
+                }))
+                .is_ok(),
+                "failed initialization poisoned the owner set",
+            );
+        }
+    }
+
+    #[test]
+    fn ownable2_step_state_matches_model_and_failed_calls_are_atomic(
+        ops in prop::collection::vec(ownable2_step_op_strategy(), 0..120),
+    ) {
+        let owner = principal(1);
+        let mut ownable = Ownable2Step::new();
+        ownable.init(owner);
+        let mut model = Ownable2StepModel::new(owner);
+        prop_assert_eq!(ownable2_step_snapshot(&ownable), model.snapshot());
+
+        for op in ops {
+            let before = ownable2_step_snapshot(&ownable);
+            let expected = model.apply(&op);
+            let actual = apply_ownable2_step(&mut ownable, &op);
+            prop_assert_eq!(actual, expected, "ownable2-step operation diverged: {:?}", op);
+            if expected {
+                prop_assert_eq!(
+                    ownable2_step_snapshot(&ownable),
+                    model.snapshot(),
+                    "successful ownable2-step operation left unexpected state: {:?}",
+                    op,
+                );
+            } else {
+                prop_assert_eq!(
+                    ownable2_step_snapshot(&ownable),
+                    before,
+                    "failed ownable2-step operation mutated state: {:?}",
                     op,
                 );
             }
@@ -1836,6 +2949,75 @@ proptest! {
     }
 
     #[test]
+    fn timelock_controller_rejects_bad_min_delay_payloads_atomically(
+        payload in bad_min_delay_payload_strategy(),
+        now in 0u64..=64,
+    ) {
+        let self_principal = principal(2);
+        let admin = principal(1);
+        let mut controller = TimelockController::new(self_principal, admin, 5);
+        let id = [88u8; 32];
+        prop_assert!(controller.has_role(PROPOSER_ROLE, admin));
+        prop_assert!(controller.has_role(EXECUTOR_ROLE, admin));
+
+        let ready_at = controller.schedule(admin, id, now, payload);
+        let before = controller.get(id).cloned();
+        let actual = catch_unwind(AssertUnwindSafe(|| {
+            controller.execute_min_delay_change(admin, id, ready_at);
+        }))
+        .is_ok();
+
+        prop_assert!(!actual, "bad min-delay payload unexpectedly executed");
+        prop_assert_eq!(controller.timelock().min_delay(), 5);
+        prop_assert_eq!(
+            controller.get(id).cloned(),
+            before,
+            "bad min-delay payload mutated scheduled operation state",
+        );
+    }
+
+    #[test]
+    fn timelock_controller_min_delay_change_flow_preserves_delay_until_ready(
+        new_delay in any::<u64>(),
+        now in 0u64..=64,
+    ) {
+        let self_principal = principal(2);
+        let admin = principal(1);
+        let mut controller = TimelockController::new(self_principal, admin, 5);
+        let id = [89u8; 32];
+        let ready_at = controller.schedule_min_delay_change(
+            admin,
+            id,
+            now,
+            new_delay,
+        );
+        let before = controller.get(id).cloned();
+
+        let early = catch_unwind(AssertUnwindSafe(|| {
+            controller.execute_min_delay_change(admin, id, ready_at - 1);
+        }))
+        .is_ok();
+        prop_assert!(!early, "min-delay change executed before ready_at");
+        prop_assert_eq!(controller.timelock().min_delay(), 5);
+        prop_assert_eq!(controller.get(id).cloned(), before);
+
+        let applied = controller.execute_min_delay_change(admin, id, ready_at);
+        prop_assert_eq!(applied, new_delay);
+        prop_assert_eq!(controller.timelock().min_delay(), new_delay);
+        prop_assert!(
+            controller.get(id).map(|operation| operation.done).unwrap_or(false),
+            "executed min-delay change was not marked done",
+        );
+        prop_assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                controller.set_min_delay(admin, 5);
+            }))
+            .is_err(),
+            "admin changed delay directly without timelock self-call",
+        );
+    }
+
+    #[test]
     fn upgrade_admin_state_matches_model_and_failed_calls_are_atomic(
         ops in prop::collection::vec(upgrade_op_strategy(), 0..120),
     ) {
@@ -1862,6 +3044,160 @@ proptest! {
                     upgrade_snapshot(&upgrade),
                     before,
                     "failed upgrade operation mutated state: {:?}",
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn nonce_and_replay_state_matches_model_and_failed_calls_are_atomic(
+        ops in prop::collection::vec(nonce_replay_op_strategy(), 0..180),
+    ) {
+        let mut nonces = NonceManager::new();
+        let mut replays = ReplayGuard::new();
+        let mut model = NonceReplayModel::default();
+        prop_assert_eq!(nonce_replay_snapshot(&nonces, &replays), model.snapshot());
+
+        for op in ops {
+            let before = nonce_replay_snapshot(&nonces, &replays);
+            let expected = model.apply(&op);
+            let actual = apply_nonce_replay(&mut nonces, &mut replays, &op);
+            prop_assert_eq!(actual, expected, "nonce/replay operation diverged: {:?}", op);
+            if expected {
+                prop_assert_eq!(
+                    nonce_replay_snapshot(&nonces, &replays),
+                    model.snapshot(),
+                    "successful nonce/replay operation left unexpected state: {:?}",
+                    op,
+                );
+            } else {
+                prop_assert_eq!(
+                    nonce_replay_snapshot(&nonces, &replays),
+                    before,
+                    "failed nonce/replay operation mutated state: {:?}",
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn voting_units_state_matches_model_and_failed_calls_are_atomic(
+        ops in prop::collection::vec(voting_op_strategy(), 0..160),
+    ) {
+        let accounts = all_principals();
+        let timepoints = [0, 1, 2, 3, 4, 8, 16, 24, u64::MAX];
+        let mut votes = VotingUnits::new();
+        let mut model = VotingModel::default();
+        prop_assert_eq!(
+            voting_snapshot(&votes, &accounts, &timepoints),
+            model.snapshot(&accounts, &timepoints),
+        );
+
+        for op in ops {
+            let before = voting_snapshot(&votes, &accounts, &timepoints);
+            let expected = model.apply(&op);
+            let actual = apply_voting(&mut votes, &op);
+            prop_assert_eq!(actual, expected, "voting operation diverged: {:?}", op);
+            if expected {
+                prop_assert_eq!(
+                    voting_snapshot(&votes, &accounts, &timepoints),
+                    model.snapshot(&accounts, &timepoints),
+                    "successful voting operation left unexpected state: {:?}",
+                    op,
+                );
+            } else {
+                prop_assert_eq!(
+                    voting_snapshot(&votes, &accounts, &timepoints),
+                    before,
+                    "failed voting operation mutated state: {:?}",
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn royalty_registry_state_matches_model_and_failed_calls_are_atomic(
+        ops in prop::collection::vec(royalty_op_strategy(), 0..140),
+    ) {
+        let token_ids = [0, 1, 2, 3, 4, 5];
+        let sale_prices = [0, 1, 10_000, 100_000, u64::MAX];
+        let mut royalties = RoyaltyRegistry::new();
+        let mut model = RoyaltyModel::default();
+        prop_assert_eq!(
+            royalty_snapshot(&royalties, &token_ids, &sale_prices),
+            model.snapshot(&token_ids, &sale_prices),
+        );
+
+        for op in ops {
+            let before = royalty_snapshot(&royalties, &token_ids, &sale_prices);
+            let expected = model.apply(&op);
+            let actual = apply_royalty(&mut royalties, &op);
+            prop_assert_eq!(actual, expected, "royalty operation diverged: {:?}", op);
+            if expected {
+                prop_assert_eq!(
+                    royalty_snapshot(&royalties, &token_ids, &sale_prices),
+                    model.snapshot(&token_ids, &sale_prices),
+                    "successful royalty operation left unexpected state: {:?}",
+                    op,
+                );
+            } else {
+                prop_assert_eq!(
+                    royalty_snapshot(&royalties, &token_ids, &sale_prices),
+                    before,
+                    "failed royalty operation mutated state: {:?}",
+                    op,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn supply_cap_rejects_overflow_and_cap_reduction(
+        initial_cap in amount_strategy(),
+        ops in prop::collection::vec(cap_op_strategy(), 0..120),
+    ) {
+        let mut cap = SupplyCap::new(initial_cap);
+        let mut model_cap = initial_cap;
+        prop_assert_eq!(cap.cap(), model_cap);
+
+        for op in ops {
+            let before = cap.cap();
+            let expected = match op {
+                CapOp::AssertMint { current_supply, amount } => {
+                    current_supply
+                        .checked_add(amount)
+                        .map(|next| next <= model_cap)
+                        .unwrap_or(false)
+                }
+                CapOp::SetCap { current_supply, cap } => {
+                    if cap < current_supply {
+                        false
+                    } else {
+                        model_cap = cap;
+                        true
+                    }
+                }
+            };
+            let actual = catch_unwind(AssertUnwindSafe(|| match op {
+                CapOp::AssertMint { current_supply, amount } => {
+                    cap.assert_mint(current_supply, amount)
+                }
+                CapOp::SetCap { current_supply, cap: next_cap } => {
+                    cap.set_cap(current_supply, next_cap)
+                }
+            }))
+            .is_ok();
+            prop_assert_eq!(actual, expected, "supply-cap operation diverged: {:?}", op);
+            if expected {
+                prop_assert_eq!(cap.cap(), model_cap);
+            } else {
+                prop_assert_eq!(
+                    cap.cap(),
+                    before,
+                    "failed supply-cap operation mutated state: {:?}",
                     op,
                 );
             }

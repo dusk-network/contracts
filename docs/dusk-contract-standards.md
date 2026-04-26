@@ -203,10 +203,12 @@ The native test suite covers positive and negative paths for:
 - upgrade preparation, activation delay, cancellation, rollback, finalization,
   events, and namespaced proxy state.
 
-The hardening branch also adds property-based DRC20 and DRC721 state-machine
-tests. They compare arbitrary operation sequences against independent models
-and assert that rejected operations leave native state unchanged. See
-`docs/dusk-contract-standards-hardening.md` for the current hardening track.
+The hardening branch also adds property-based state-machine tests for token,
+authorization, ownership, role, timelock, proxy, nonce/replay, checkpoint,
+royalty, and cap primitives. They compare arbitrary operation sequences
+against independent models and assert that rejected operations leave native
+state unchanged. See `docs/dusk-contract-standards-hardening.md` for the
+current hardening track.
 
 The ignored VM test deploys all four Wasm examples, checks positive query
 paths, performs real Moonlight and Phoenix signed calls against the

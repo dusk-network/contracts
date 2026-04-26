@@ -11,6 +11,8 @@ the composing contract:
 
 - signed authorization must bind contract, domain, action id, payload hash,
   nonce, principal, and expiry before nonce/replay state is consumed;
+- Phoenix signed authorization must preserve nonce and replay-key state across
+  all rejected envelope, signature, expiry, policy, and replay-key cases;
 - owner, role, and upgrade-admin checks must not consume a valid signer nonce
   when the signer is not authorized for the policy being checked;
 - mixed owner-set checks must follow the same no-consume-on-unauthorized rule;
@@ -21,6 +23,16 @@ the composing contract:
 - DRC721 total supply must equal the modeled number of live token ids;
 - DRC721 owner, approval, operator, balance, and enumerable views must remain
   internally consistent after arbitrary operation sequences;
+- nonce import/export and replay-key import/export must be monotonic,
+  idempotent, and atomic on rejected nonce consumption;
+- voting checkpoints must reject non-monotonic writes without partially
+  updating account or total-supply checkpoints;
+- royalty registry mutations and overflow-prone royalty quotes must leave
+  registry state unchanged on rejection;
+- supply-cap changes must reject cap reductions below current supply and
+  overflow-prone mints without moving the configured cap;
+- owner-set initialization and timelock-controller maintenance operations must
+  validate before mutating durable state;
 - the reserved zero principal must not be accepted as an actor, recipient,
   spender, minter, burner, or operator where that would create ownership or
   authorization state.
@@ -31,12 +43,20 @@ the composing contract:
 state-machine tests for:
 
 - action-bound authorization rejection cases;
+- Phoenix action-bound authorization rejection and replay-key preservation
+  cases;
 - mixed owner sets;
 - access-control role/admin mutation;
 - timelock scheduling, execution, cancellation, and delay mutation;
+- timelock-controller self-governed delay changes and malformed maintenance
+  payload rejection;
 - upgrade-admin prepare, activate, cancel, rollback, and finalization flows;
+- nonce/replay state import, consumption, and rejection;
+- two-step ownership;
+- DRC20 supply caps and voting-unit checkpoints;
 - DRC20 accounting and allowance flows;
-- DRC721 ownership, approval, operator, balance, and enumerable views.
+- DRC721 ownership, approval, operator, balance, and enumerable views;
+- DRC721 royalty registry mutation and quote behavior.
 
 The tests generate random operation sequences, run them against the real
 primitive and an independent model, and assert after each operation that:
@@ -47,6 +67,15 @@ primitive and an independent model, and assert after each operation that:
 
 The saved proptest regression file keeps the self-transfer case that caught a
 DRC20 accounting bug during this pass.
+
+The extended invariant pass also found and fixed:
+
+- a `VotingUnits::move_units` atomicity bug where an account checkpoint could
+  be written before a later total-supply checkpoint rejected the operation;
+- an `OwnerSet::init` atomicity bug where a later invalid owner could leave
+  earlier owners in the set;
+- a `TimelockController::execute_min_delay_change` atomicity bug where a
+  malformed payload could mark an operation done before being rejected.
 
 ## Commands
 
@@ -70,6 +99,14 @@ done
 
 On April 26, 2026, this loop ran for 14,404 seconds and completed 367 full
 property-suite iterations without a failure.
+
+On April 26, 2026, the extended 16-test property suite also passed a
+4,096-case focused run:
+
+```sh
+PROPTEST_CASES=4096 PROPTEST_MAX_SHRINK_ITERS=8192 \
+  cargo test -p dusk-contract-standards --test properties
+```
 
 Run the full standards validation pass with:
 
