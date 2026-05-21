@@ -47,6 +47,11 @@ impl Charlie {
         .expect("Transferring to stake contract should succeed");
     }
 
+    pub fn stake_then_panic(&mut self, stake: Stake) {
+        self.stake(stake);
+        panic!("revert after stake_from_contract")
+    }
+
     pub fn stake_from_contract(&mut self, receive: ReceiveFromContract) {
         let transfer = ContractToContract {
             contract: STAKE_CONTRACT,
