@@ -1,0 +1,15 @@
+[package]
+name = "multisig-core"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+dusk-core = { workspace = true }
+bytecheck = { workspace = true }
+rkyv = { workspace = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_with = { workspace = true, features = ["hex"], optional = true }
+
+[features]
+serde = ["dep:serde", "dep:serde_with", "dusk-core/serde"]
+abi = ["dusk-core/abi-dlmalloc"]

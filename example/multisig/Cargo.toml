@@ -1,0 +1,10 @@
+[package]
+name = "multisig"
+edition = "2021"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+dusk-core = { workspace = true, features = ["abi-dlmalloc"] }
+multisig-core = { path = "../multisig-core" }
+
+[lib]
+crate-type = ["cdylib"]

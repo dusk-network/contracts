@@ -13,6 +13,7 @@ This repository contains smart contracts for the Dusk ecosystem:
   functionality to the Dusk protocol.
 - Test contracts: small contracts used for integration tests and host function
   coverage.
+- Example contracts: showcase contract patterns and features for Dusk
 
 Other parts of the protocol are implemented largely in
 [Rusk](https://github.com/dusk-network/rusk).
@@ -45,3 +46,7 @@ The on-chain ContractId for the stake contract is:
   on behalf of a contract via the transfer and stake contracts.
 - [`host_fn`](tests/host_fn): wraps host functions (hashing, signature/proof
   verification, chain metadata, etc.) for testing.
+
+## Example Contracts
+
+- [`multisig`](example/multisig): a flexible multi-signature approval engine for secure, threshold-based admin actions

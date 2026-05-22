@@ -1,4 +1,4 @@
-SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
+SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn example
 
 all: setup-compiler $(SUBDIRS) ## Build all the contracts
 
