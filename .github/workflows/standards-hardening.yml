@@ -1,0 +1,31 @@
+name: Standards Hardening
+
+on:
+  workflow_dispatch:
+    inputs:
+      property_cases:
+        description: Property-test cases per invariant
+        required: false
+        default: "8192"
+      data_driver_cases:
+        description: Forge data-driver fuzz cases
+        required: false
+        default: "2048"
+  schedule:
+    - cron: "17 2 * * *"
+
+jobs:
+  hardening:
+    name: Standards property and ABI fuzzing
+    runs-on: core
+    timeout-minutes: 240
+    env:
+      STANDARDS_PROPTEST_CASES: ${{ github.event.inputs.property_cases || '8192' }}
+      STANDARDS_PROPTEST_MAX_SHRINK_ITERS: "16384"
+      STANDARDS_DATA_DRIVER_FUZZ_CASES: ${{ github.event.inputs.data_driver_cases || '2048' }}
+      STANDARDS_DATA_DRIVER_FUZZ_SHRINK_ITERS: "4096"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dsherret/rust-toolchain-file@v1
+      - run: rustup target add wasm32-unknown-unknown
+      - run: make standards-hardening

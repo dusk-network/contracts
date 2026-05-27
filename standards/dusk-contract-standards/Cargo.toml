@@ -22,6 +22,8 @@ forge = ["dep:dusk-forge"]
 serde = ["dep:serde", "dusk-core/serde"]
 
 [dev-dependencies]
+dusk-data-driver = { workspace = true, features = ["reader"] }
 dusk-vm = "=1.6.0"
+proptest = { workspace = true }
 rand = { workspace = true, features = ["std_rng"] }
 serde_json = { version = "1", default-features = false, features = ["std"] }
