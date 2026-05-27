@@ -19,3 +19,4 @@ pub const INVALID_OPERATION: &str = "DuskStandards: invalid operation";
 pub const EXPIRED: &str = "DuskStandards: expired";
 pub const REENTRANCY: &str = "DuskStandards: reentrant call";
 pub const OVERFLOW: &str = "DuskStandards: arithmetic overflow";
+pub const UNDERFLOW: &str = "DuskStandards: arithmetic underflow";

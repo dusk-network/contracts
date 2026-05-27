@@ -1,4 +1,4 @@
-STANDARDS_EXAMPLES := standards/examples/multisig_controller
+STANDARDS_EXAMPLES := standards/examples/drc20_roles_pausable standards/examples/multisig_controller
 STANDARDS_WASM_CONTRACTS := $(STANDARDS_EXAMPLES)
 LEGACY_SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
 STANDARDS_PROPTEST_CASES ?= 8192

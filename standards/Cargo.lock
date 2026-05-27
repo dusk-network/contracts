@@ -805,6 +805,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "drc20-roles-pausable"
+version = "0.1.0"
+dependencies = [
+ "bytecheck",
+ "dusk-contract-standards",
+ "dusk-core",
+ "dusk-data-driver",
+ "dusk-forge",
+ "rkyv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dusk-bls12_381"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
