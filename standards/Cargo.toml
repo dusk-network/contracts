@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "dusk-contract-standards",
+    "examples/multisig_controller",
 ]
 
 resolver = "2"

@@ -794,6 +794,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dlmalloc"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad5208a115eaba24916f7456929832e310a81518c641f93fee4f89aa93aa3675"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "dusk-bls12_381"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -867,6 +878,18 @@ dependencies = [
  "serde",
  "serde_with",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "dusk-data-driver"
+version = "0.3.2-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "191e9b51e34ecb1a22d79de6df7e6e2971121e0069d60d738df9059837f46a1c"
+dependencies = [
+ "bytecheck",
+ "rkyv",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1611,6 +1634,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "multisig-controller"
+version = "0.1.0"
+dependencies = [
+ "bytecheck",
+ "dusk-contract-standards",
+ "dusk-core",
+ "dusk-data-driver",
+ "dusk-forge",
+ "rkyv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1777,6 +1814,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9df8d2d3f5deb052f61c65d01d892c4babe604cd884cdd2fcef7f6da4392b476"
 dependencies = [
  "bytecheck",
+ "dlmalloc",
  "hex",
  "rkyv",
  "serde",

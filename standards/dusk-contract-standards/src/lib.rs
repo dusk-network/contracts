@@ -27,6 +27,8 @@ use rand as _;
 #[cfg(test)]
 use serde_json as _;
 
+pub mod access;
 pub mod auth;
 pub mod core;
+pub mod governance;
 pub mod security;
