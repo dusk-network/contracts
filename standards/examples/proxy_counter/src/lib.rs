@@ -70,7 +70,18 @@ pub struct ValueChanged {
     pub sender: Option<Principal>,
 }
 
-#[dusk_forge::contract]
+impl dusk_forge::ContractEvent for ValueChanged {
+    const TOPICS: &'static [&'static str] = &[VALUE_CHANGED_TOPIC];
+}
+
+#[dusk_forge::contract(events = [
+    ValueChanged,
+    UpgradePrepared,
+    UpgradeActivated,
+    UpgradeCancelled,
+    UpgradeRolledBack,
+    RollbackFinalized,
+])]
 mod proxy_counter {
     use alloc::vec::Vec;
 
@@ -111,8 +122,6 @@ mod proxy_counter {
                 authorizations: AuthorizationManager::new(),
             }
         }
-
-        #[contract(no_event)]
         pub fn init(&mut self, args: Init) {
             if self.admin.is_some() {
                 panic!("{}", error::ALREADY_INITIALIZED);
@@ -142,8 +151,6 @@ mod proxy_counter {
                 self.store.get_word(COUNTER_KEY)[24..32].try_into().unwrap(),
             )
         }
-
-        #[contract(emits = [(VALUE_CHANGED_TOPIC, ValueChanged)])]
         pub fn increment(&mut self) {
             let previous = self.value();
             let next = previous.checked_add(1).expect(error::OVERFLOW);
@@ -154,8 +161,6 @@ mod proxy_counter {
                 CallContext::current().principal,
             );
         }
-
-        #[contract(emits = [(VALUE_CHANGED_TOPIC, ValueChanged)])]
         pub fn set_value(&mut self, args: SetValue) {
             let previous = self.value();
             let caller = self.authorize_admin_action(
@@ -170,8 +175,6 @@ mod proxy_counter {
             self.write_value(args.value);
             Self::emit_value_changed(previous, args.value, Some(caller));
         }
-
-        #[contract(emits = [(UPGRADE_PREPARED_TOPIC, UpgradePrepared)])]
         pub fn prepare_upgrade(&mut self, args: PrepareUpgrade) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
@@ -193,8 +196,6 @@ mod proxy_counter {
             );
             Self::emit_upgrade_prepared(event);
         }
-
-        #[contract(emits = [(UPGRADE_ACTIVATED_TOPIC, UpgradeActivated)])]
         pub fn activate_upgrade(&mut self, args: AdminCall) -> Vec<u8> {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
@@ -210,8 +211,6 @@ mod proxy_counter {
             Self::emit_upgrade_activated(event);
             migrate_data
         }
-
-        #[contract(emits = [(UPGRADE_CANCELLED_TOPIC, UpgradeCancelled)])]
         pub fn cancel_pending_upgrade(&mut self, args: AdminCall) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
@@ -225,8 +224,6 @@ mod proxy_counter {
             let event = self.admin_mut().cancel_pending(caller);
             Self::emit_upgrade_cancelled(event);
         }
-
-        #[contract(emits = [(UPGRADE_ROLLED_BACK_TOPIC, UpgradeRolledBack)])]
         pub fn rollback(&mut self, args: AdminCall) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
@@ -240,8 +237,6 @@ mod proxy_counter {
             let event = self.admin_mut().rollback_with_event(caller, now());
             Self::emit_upgrade_rolled_back(event);
         }
-
-        #[contract(emits = [(ROLLBACK_FINALIZED_TOPIC, RollbackFinalized)])]
         pub fn finalize_rollback_window(&mut self, args: AdminCall) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),

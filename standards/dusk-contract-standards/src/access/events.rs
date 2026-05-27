@@ -67,3 +67,19 @@ pub struct RoleRevoked {
     /// Principal that authorized the revoke.
     pub sender: Principal,
 }
+
+impl dusk_forge::ContractEvent for Paused {
+    const TOPICS: &'static [&'static str] = &[PAUSED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for Unpaused {
+    const TOPICS: &'static [&'static str] = &[UNPAUSED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for RoleGranted {
+    const TOPICS: &'static [&'static str] = &[ROLE_GRANTED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for RoleRevoked {
+    const TOPICS: &'static [&'static str] = &[ROLE_REVOKED_TOPIC];
+}

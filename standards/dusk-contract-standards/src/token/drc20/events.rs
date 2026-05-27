@@ -39,3 +39,11 @@ pub struct Approval {
     /// Amount.
     pub amount: u64,
 }
+
+impl dusk_forge::ContractEvent for Transfer {
+    const TOPICS: &'static [&'static str] = &[TRANSFER_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for Approval {
+    const TOPICS: &'static [&'static str] = &[APPROVAL_TOPIC];
+}

@@ -23,19 +23,19 @@ resolver = "2"
 
 [workspace.dependencies]
 # Dusk dependencies
-dusk-core = { path = "../rusk-private/core" }
+dusk-core = "1.6.0"
 dusk-bytes = "0.1.7"
-dusk-data-driver = { path = "../rusk-private/data-drivers/data-driver" }
-dusk-forge = { path = "../forge-explicit-emits" }
-dusk-vm = { path = "../rusk-private/vm" }
-dusk-wallet-core = { path = "../rusk-private/wallet-core" }
+dusk-data-driver = "0.3.2-alpha.1"
+dusk-forge = "0.3.0"
+dusk-vm = "1.6.0"
+dusk-wallet-core = "1.6.0"
 dusk-wasmtime = { version = "21.0.0-alpha", default-features = false, features = [
     "cranelift",
     "runtime",
     "parallel-compilation",
 ] }
-rusk-profile = { path = "../rusk-private/rusk-profile" }
-rusk-prover = { path = "../rusk-private/rusk-prover" }
+rusk-profile = "1.6.0"
+rusk-prover = "1.6.0"
 
 # Other dependencies
 bytecheck = { version = "0.6.12", default-features = false }

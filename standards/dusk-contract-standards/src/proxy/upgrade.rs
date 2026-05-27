@@ -98,6 +98,26 @@ pub struct RollbackFinalized {
     pub implementation: ContractId,
 }
 
+impl dusk_forge::ContractEvent for UpgradePrepared {
+    const TOPICS: &'static [&'static str] = &[UPGRADE_PREPARED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for UpgradeActivated {
+    const TOPICS: &'static [&'static str] = &[UPGRADE_ACTIVATED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for UpgradeCancelled {
+    const TOPICS: &'static [&'static str] = &[UPGRADE_CANCELLED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for UpgradeRolledBack {
+    const TOPICS: &'static [&'static str] = &[UPGRADE_ROLLED_BACK_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for RollbackFinalized {
+    const TOPICS: &'static [&'static str] = &[ROLLBACK_FINALIZED_TOPIC];
+}
+
 /// Dusk-native upgrade controller.
 #[derive(Clone, Debug)]
 pub struct UpgradeAdmin {

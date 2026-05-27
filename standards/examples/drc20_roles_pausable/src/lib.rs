@@ -77,7 +77,14 @@ pub struct VotesQuery {
     pub timepoint: u64,
 }
 
-#[dusk_forge::contract]
+#[dusk_forge::contract(events = [
+    Drc20Transfer,
+    Drc20Approval,
+    Paused,
+    Unpaused,
+    RoleGranted,
+    RoleRevoked,
+])]
 mod drc20_roles_pausable {
     use alloc::string::String;
     use alloc::vec::Vec;
@@ -136,8 +143,6 @@ mod drc20_roles_pausable {
                 votes: VotingUnits::new(),
             }
         }
-
-        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn init(&mut self, args: Init) {
             if args.admin.is_zero() {
                 panic!("{}", error::ZERO_PRINCIPAL);
@@ -234,8 +239,6 @@ mod drc20_roles_pausable {
         pub fn has_role(&self, args: RoleQuery) -> bool {
             self.access.has_role(args.role, args.account)
         }
-
-        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn transfer(&mut self, args: TransferCall) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -256,15 +259,11 @@ mod drc20_roles_pausable {
             };
             Self::emit_transfer(event);
         }
-
-        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn approve(&mut self, args: ApproveCall) {
             let caller = caller();
             let event = self.token.approve(caller, args);
             Self::emit_approval(event);
         }
-
-        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn approve_by_authorization(&mut self, args: SignedApproveCall) {
             let principal = self.authorizations.authorize_signed_action(
                 &args.authorization,
@@ -288,22 +287,16 @@ mod drc20_roles_pausable {
             );
             Self::emit_approval(event);
         }
-
-        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn increase_allowance(&mut self, args: IncreaseAllowanceCall) {
             let caller = caller();
             let event = self.token.increase_allowance(caller, args);
             Self::emit_approval(event);
         }
-
-        #[contract(emits = [(APPROVAL_TOPIC, Drc20Approval)])]
         pub fn decrease_allowance(&mut self, args: DecreaseAllowanceCall) {
             let caller = caller();
             let event = self.token.decrease_allowance(caller, args);
             Self::emit_approval(event);
         }
-
-        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn transfer_from(&mut self, args: TransferFromCall) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -324,8 +317,6 @@ mod drc20_roles_pausable {
             };
             Self::emit_transfer(event);
         }
-
-        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn mint(&mut self, args: MintCall) {
             self.pausable.assert_not_paused();
             if args.to.is_zero() {
@@ -349,8 +340,6 @@ mod drc20_roles_pausable {
                 .move_units(None, Some(event.to), event.amount, now());
             Self::emit_transfer(event);
         }
-
-        #[contract(emits = [(TRANSFER_TOPIC, Drc20Transfer)])]
         pub fn burn(&mut self, amount: u64) {
             self.pausable.assert_not_paused();
             let caller = caller();
@@ -359,8 +348,6 @@ mod drc20_roles_pausable {
                 .move_units(Some(event.from), None, event.amount, now());
             Self::emit_transfer(event);
         }
-
-        #[contract(emits = [(PAUSED_TOPIC, Paused)])]
         pub fn pause(&mut self, args: AdminCall) {
             self.pausable.assert_not_paused();
             let caller = self.authorize_role_action(
@@ -376,8 +363,6 @@ mod drc20_roles_pausable {
             self.pausable.pause();
             Self::emit_paused(caller);
         }
-
-        #[contract(emits = [(UNPAUSED_TOPIC, Unpaused)])]
         pub fn unpause(&mut self, args: AdminCall) {
             self.pausable.assert_paused();
             let caller = self.authorize_role_action(
@@ -397,8 +382,6 @@ mod drc20_roles_pausable {
         pub fn paused(&self) -> bool {
             self.pausable.paused()
         }
-
-        #[contract(emits = [(ROLE_GRANTED_TOPIC, RoleGranted)])]
         pub fn grant_role(&mut self, args: RoleCall) {
             if args.account.is_zero() {
                 panic!("{}", error::ZERO_PRINCIPAL);
@@ -420,8 +403,6 @@ mod drc20_roles_pausable {
                 Self::emit_role_granted(args.role, args.account, caller);
             }
         }
-
-        #[contract(emits = [(ROLE_REVOKED_TOPIC, RoleRevoked)])]
         pub fn revoke_role(&mut self, args: RoleCall) {
             let admin = self.access.get_role_admin(args.role);
             let caller = self.authorize_role_action(

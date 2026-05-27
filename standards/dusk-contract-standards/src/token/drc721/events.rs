@@ -121,3 +121,31 @@ pub struct TokenRoyaltyCleared {
     /// Token id.
     pub token_id: u64,
 }
+
+impl dusk_forge::ContractEvent for Transfer {
+    const TOPICS: &'static [&'static str] = &[TRANSFER_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for Approval {
+    const TOPICS: &'static [&'static str] = &[APPROVAL_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for ApprovalForAll {
+    const TOPICS: &'static [&'static str] = &[APPROVAL_FOR_ALL_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for DefaultRoyaltySet {
+    const TOPICS: &'static [&'static str] = &[DEFAULT_ROYALTY_SET_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for DefaultRoyaltyCleared {
+    const TOPICS: &'static [&'static str] = &[DEFAULT_ROYALTY_CLEARED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for TokenRoyaltySet {
+    const TOPICS: &'static [&'static str] = &[TOKEN_ROYALTY_SET_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for TokenRoyaltyCleared {
+    const TOPICS: &'static [&'static str] = &[TOKEN_ROYALTY_CLEARED_TOPIC];
+}

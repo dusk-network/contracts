@@ -82,7 +82,14 @@ pub struct NonceQuery {
     pub domain: NonceDomain,
 }
 
-#[dusk_forge::contract]
+#[dusk_forge::contract(events = [
+    MultisigOperationProposed,
+    MultisigOperationConfirmed,
+    MultisigOperationExecuted,
+    MultisigOperationCancelled,
+    MultisigAuthorityUpdated,
+    MultisigTimeLimitsUpdated,
+])]
 mod multisig_controller {
     use alloc::format;
     use alloc::vec::Vec;
@@ -127,8 +134,6 @@ mod multisig_controller {
                 initialized: false,
             }
         }
-
-        #[contract(no_event)]
         pub fn init(&mut self, args: Init) {
             if self.initialized {
                 panic!("{}", error::ALREADY_INITIALIZED);

@@ -216,6 +216,35 @@ pub struct MultisigTimeLimitsUpdated {
     pub tombstone_ttl: u64,
 }
 
+impl dusk_forge::ContractEvent for MultisigOperationProposed {
+    const TOPICS: &'static [&'static str] =
+        &[MULTISIG_OPERATION_PROPOSED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for MultisigOperationConfirmed {
+    const TOPICS: &'static [&'static str] =
+        &[MULTISIG_OPERATION_CONFIRMED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for MultisigOperationExecuted {
+    const TOPICS: &'static [&'static str] =
+        &[MULTISIG_OPERATION_EXECUTED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for MultisigOperationCancelled {
+    const TOPICS: &'static [&'static str] =
+        &[MULTISIG_OPERATION_CANCELLED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for MultisigAuthorityUpdated {
+    const TOPICS: &'static [&'static str] = &[MULTISIG_AUTHORITY_UPDATED_TOPIC];
+}
+
+impl dusk_forge::ContractEvent for MultisigTimeLimitsUpdated {
+    const TOPICS: &'static [&'static str] =
+        &[MULTISIG_TIME_LIMITS_UPDATED_TOPIC];
+}
+
 /// Standalone multisig controller primitive.
 ///
 /// This state machine tracks operation proposals and confirmations. It does
