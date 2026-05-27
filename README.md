@@ -11,6 +11,9 @@ This repository contains smart contracts for the Dusk ecosystem:
 
 - Genesis protocol contracts: part of the genesis state and provide core
   functionality to the Dusk protocol.
+- Contract standards: reusable Dusk-native primitives and examples for access
+  control, tokens, replay and nonce protection, timelocks, pausing, reentrancy
+  guards, and upgrade policy.
 - Test contracts: small contracts used for integration tests and host function
   coverage.
 
@@ -45,3 +48,11 @@ The on-chain ContractId for the stake contract is:
   on behalf of a contract via the transfer and stake contracts.
 - [`host_fn`](tests/host_fn): wraps host functions (hashing, signature/proof
   verification, chain metadata, etc.) for testing.
+
+## Contract Standards
+
+- [`dusk-contract-standards`](standards/dusk-contract-standards): reusable
+  primitives.
+
+Reference contracts, design notes, and security documentation are added in the
+follow-up standards PRs.

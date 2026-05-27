@@ -1,0 +1,41 @@
+[workspace]
+members = [
+    "dusk-contract-standards",
+]
+
+resolver = "2"
+
+[workspace.dependencies]
+dusk-core = "=1.6.0"
+dusk-data-driver = "=0.3.2-alpha.1"
+dusk-forge = "=0.3.0"
+dusk-vm = "=1.6.0"
+
+bytecheck = { version = "0.6.12", default-features = false }
+rand = { version = "0.8.5", default-features = false }
+rkyv = { version = "0.7.39", default-features = false }
+serde = { version = "1", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
+serde_json = { version = "1", default-features = false }
+serde_with = { version = "=3.9.0", default-features = false, features = [
+    "hex",
+] }
+time = { version = "=0.3.36", default-features = false }
+
+[profile.dev.build-override]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+codegen-units = 16
+
+[profile.release.build-override]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
+codegen-units = 16

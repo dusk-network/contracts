@@ -5,6 +5,45 @@ on:
       - main
 
 jobs:
+  changes:
+    name: Detect changed contract areas
+    runs-on: core
+    outputs:
+      legacy: ${{ steps.filter.outputs.legacy }}
+      standards: ${{ steps.filter.outputs.standards }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            legacy:
+              - 'genesis/**'
+              - 'tests/**'
+              - 'bin/**'
+              - 'scripts/setup-compiler.sh'
+              - 'scripts/download-rusk.sh'
+              - 'scripts/build-test-contracts.sh'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'Makefile'
+              - 'README.md'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+            standards:
+              - 'standards/**'
+              - 'docs/dusk-contract-standards*'
+              - 'scripts/dusk-contract-standards-*'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'Makefile'
+              - 'README.md'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/standards-hardening.yml'
+
   dusk_analyzer:
     name: Dusk Analyzer
     runs-on: core
@@ -13,9 +52,13 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
       - run: cargo install --git https://github.com/dusk-network/cargo-dusk-analyzer
       - run: cargo dusk-analyzer
+      - run: rustup toolchain install nightly-2026-02-27 --profile minimal --component rust-src --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - run: cd standards && cargo dusk-analyzer
 
   clippy:
     name: Clippy check
+    needs: changes
+    if: needs.changes.outputs.legacy == 'true'
     runs-on: core
     steps:
       - uses: actions/checkout@v4
@@ -25,9 +68,22 @@ jobs:
 
   test:
     name: Run Tests
+    needs: changes
+    if: needs.changes.outputs.legacy == 'true'
     runs-on: core
     steps:
       - uses: actions/checkout@v4
       - uses: dsherret/rust-toolchain-file@v1
       - run: make keys
       - run: make test
+
+  standards:
+    name: Standards CI
+    needs: changes
+    if: needs.changes.outputs.standards == 'true'
+    runs-on: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dsherret/rust-toolchain-file@v1
+      - run: rustup toolchain install nightly-2026-02-27 --profile minimal --component rust-src --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - run: make standards-ci

@@ -1,0 +1,32 @@
+[package]
+name = "dusk-contract-standards"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+dusk-core = "=1.6.0"
+dusk-forge = "=0.3.0"
+bytecheck = { workspace = true }
+rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
+serde = { version = "1", default-features = false, features = [
+    "derive",
+    "alloc",
+], optional = true }
+serde_with = { version = "=3.9.0", default-features = false, features = [
+    "hex",
+], optional = true }
+time = { version = "=0.3.36", default-features = false, optional = true }
+
+[features]
+contract = []
+serde = ["dep:serde", "dep:serde_with", "dep:time", "dusk-core/serde"]
+
+[dev-dependencies]
+dusk-data-driver = { version = "=0.3.2-alpha.1", features = ["reader"] }
+dusk-vm = "=1.6.0"
+proptest = "1.6.0"
+rand = { workspace = true, features = ["std_rng"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
