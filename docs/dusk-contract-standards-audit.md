@@ -31,8 +31,9 @@ Out of scope:
 
 The standards layer assumes:
 
-- `CallContext::current()` correctly reports observed Moonlight and contract
-  callers when the runtime exposes such callers.
+- `CallContext::current()` correctly reports observed Moonlight root callers
+  through `public_sender`, including normal transfer-contract entrypoint
+  execution, and reports immediate contract callers for nested calls.
 - Phoenix calls do not expose a stable caller identity. Phoenix authorization
   must therefore be an explicit Schnorr signature over an `AuthorizedAction`.
 - Dusk signature primitives verify according to their upstream implementations.
@@ -55,7 +56,7 @@ The layer does not assume:
 | AUTH-1 | Signed actions bind contract, domain, action id, payload hash, nonce, principal, and expiry before nonce/replay consumption. | `tests/primitives.rs`, `tests/properties.rs`, VM test, local-node smoke |
 | AUTH-2 | Rejected envelope, signature, expiry, role, owner, admin, and replay-key cases do not advance nonce/replay state. | property negative matrices, VM test, local-node smoke |
 | AUTH-3 | Phoenix authorization proves control of a Schnorr key principal and never relies on observed caller identity. | primitives, properties, signed auth example, local-node smoke |
-| AUTH-4 | Moonlight owners can authorize by observed caller or signed BLS action; contract owners only by observed contract caller. | primitives, reference contracts, VM test |
+| AUTH-4 | Moonlight owners can authorize by observed root caller or signed BLS action; contract owners only by observed immediate contract caller. Transfer-contract entrypoint calls map to `public_sender`, while nested calls do not. | primitives, reference contracts, VM test, `core::context` unit tests |
 | MULTISIG-1 | Threshold multisig requires distinct owner quorum and rejects duplicate signers before nonce/replay consumption. | primitives |
 | MULTISIG-2 | Observed Moonlight/contract owners can count toward quorum; Phoenix owners require signed action approvals. | primitives |
 | MULTISIG-3 | Multisig owner and threshold maintenance requires current quorum and rejected changes leave state unchanged. | primitives |

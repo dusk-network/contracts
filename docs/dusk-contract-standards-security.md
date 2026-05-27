@@ -24,9 +24,13 @@ does not prove that a specific Phoenix note exists or was spent.
 ## Moonlight and Contract Callers
 
 Moonlight root calls and inter-contract calls can use `CallContext::current()`.
-Signed Moonlight authorization is still useful for relayed calls or workflows
-where the submitter is not the owner. Contract principals should be accepted
-only from observed inter-contract caller context.
+A normal Moonlight transaction reaches the target through the transfer
+contract. The standards layer treats that transfer-contract wrapper as the
+transaction entrypoint and maps it to `public_sender` only for the root target
+call. Nested calls are not rewritten to the public sender; they stay bound to
+the immediate caller contract. Signed Moonlight authorization is still useful
+for relayed calls or workflows where the submitter is not the owner. Contract
+principals should be accepted only from observed inter-contract caller context.
 
 ## Payload Binding
 

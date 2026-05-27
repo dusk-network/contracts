@@ -33,6 +33,10 @@ instead of forcing everything into an Ethereum-style address. Contracts can use
 `CallContext::current()` for runtime Moonlight and inter-contract calls, while
 Phoenix flows should pass an explicit authorization identity plus a nonce or
 replay key when the application needs that model.
+For Moonlight transactions routed through the transfer contract, the standards
+layer treats the root transfer-contract call into the target as the transaction
+entrypoint and resolves it to the runtime `public_sender`. Nested calls remain
+bound to the immediate caller contract.
 
 `NonceManager` is intentionally domain-separated by `(principal, domain)`. This
 lets one contract keep independent monotonic streams for permits, Phoenix
