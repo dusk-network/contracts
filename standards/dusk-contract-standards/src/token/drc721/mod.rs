@@ -307,7 +307,11 @@ impl Drc721 {
         self.assert_initialized();
         let owner = self.owner_of(OwnerOf { token_id });
         let approved = self.token_approvals.get(&token_id).copied();
-        if caller != owner && approved != Some(caller) {
+        let operator = self.is_approved_for_all(IsApprovedForAll {
+            owner,
+            operator: caller,
+        });
+        if caller != owner && approved != Some(caller) && !operator {
             panic!("{}", error::UNAUTHORIZED);
         }
         self.owners.remove(&token_id);

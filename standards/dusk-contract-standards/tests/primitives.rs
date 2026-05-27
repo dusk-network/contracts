@@ -1677,9 +1677,20 @@ fn drc721_supports_approval_operator_transfer_and_burn() {
         operator,
     }));
 
+    token.burn(operator, 1);
+    assert_eq!(token.total_supply(), 0);
+    assert_eq!(token.balance_of(BalanceOf721 { account: receiver }), 0);
+    assert_panics(|| {
+        token.owner_of(OwnerOf { token_id: 1 });
+    });
+    assert_eq!(
+        token.tokens_of(TokensOf { owner: receiver }),
+        Vec::<u64>::new()
+    );
+
     token.mint(owner, 2);
     token.burn(owner, 2);
-    assert_eq!(token.total_supply(), 1);
+    assert_eq!(token.total_supply(), 0);
 
     assert_panics(|| {
         token.transfer_from(
@@ -1690,6 +1701,9 @@ fn drc721_supports_approval_operator_transfer_and_burn() {
                 token_id: 1,
             },
         );
+    });
+    assert_panics(|| {
+        token.owner_of(OwnerOf { token_id: 1 });
     });
     assert_panics(|| {
         token.owner_of(OwnerOf { token_id: 2 });

@@ -718,7 +718,10 @@ impl Drc721Model {
                     return false;
                 };
                 let approved = self.approvals.get(&token_id).copied();
-                if caller != owner && approved != Some(caller) {
+                if caller != owner
+                    && approved != Some(caller)
+                    && !self.is_operator(owner, caller)
+                {
                     return false;
                 }
                 self.owners.remove(&token_id);
