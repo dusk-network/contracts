@@ -287,7 +287,11 @@ impl<'a> Authorizer<'a> {
     }
 
     /// Verifies an exact expected principal.
-    pub fn require_principal(
+    ///
+    /// Signed fallbacks are not checked against a call envelope. Prefer
+    /// [`Self::require_principal_action`] in public contract methods unless
+    /// the caller has already bound the action elsewhere.
+    pub fn require_principal_unbound(
         &mut self,
         expected: Principal,
         authorization: Option<&SignedAuthorization>,
@@ -322,17 +326,17 @@ impl<'a> Authorizer<'a> {
     /// This is a low-level primitive. Public contract methods should usually
     /// prefer `require_signed_action` so the intended call envelope is checked
     /// before nonce state is consumed.
-    pub fn require_signed(
+    pub fn require_unbound_signed(
         &mut self,
         authorization: &SignedAuthorization,
     ) -> Principal {
         self.authorizations
-            .authorize_signed(authorization, self.now)
+            .authorize_unbound_signed(authorization, self.now)
     }
 
     /// Verifies a signed authorization, applies an authorization predicate,
     /// and only then consumes nonce/replay state.
-    pub fn require_signed_if(
+    pub fn require_unbound_signed_if(
         &mut self,
         authorization: &SignedAuthorization,
         is_authorized: impl FnOnce(Principal) -> bool,
@@ -413,6 +417,10 @@ impl AuthorizationManager {
     /// context. Moonlight can also be authorized by a BLS signed action.
     /// Phoenix requires a Schnorr signed action because Phoenix does not expose
     /// a stable runtime caller identity to contracts.
+    ///
+    /// Signed fallbacks are not checked against a call envelope. Prefer
+    /// [`Self::authorize_principal_action`] in public contract methods unless
+    /// the caller has already bound the action elsewhere.
     pub fn authorize_principal(
         &mut self,
         expected: Principal,
@@ -475,7 +483,7 @@ impl AuthorizationManager {
     /// This is a low-level primitive. Public contract methods should usually
     /// prefer `authorize_signed_action` so the intended call envelope is
     /// checked before nonce state is consumed.
-    pub fn authorize_signed(
+    pub fn authorize_unbound_signed(
         &mut self,
         authorization: &SignedAuthorization,
         now: u64,
@@ -531,11 +539,28 @@ impl AuthorizationManager {
     }
 
     /// Verifies and consumes a Moonlight BLS authorization.
-    pub fn authorize_moonlight(
+    ///
+    /// The signed action is not checked against a call envelope. Prefer
+    /// [`Self::authorize_moonlight_action`] in public contract methods.
+    pub fn authorize_unbound_moonlight(
         &mut self,
         auth: &MoonlightAuthorization,
         now: u64,
     ) -> Principal {
+        let principal = self.verify_moonlight(auth, now);
+        self.consume_action(principal, auth.action.domain, auth.action.nonce);
+        principal
+    }
+
+    /// Verifies and consumes a Moonlight BLS authorization for an exact call
+    /// envelope.
+    pub fn authorize_moonlight_action(
+        &mut self,
+        auth: &MoonlightAuthorization,
+        envelope: ActionEnvelope,
+        now: u64,
+    ) -> Principal {
+        auth.action.assert_envelope(envelope);
         let principal = self.verify_moonlight(auth, now);
         self.consume_action(principal, auth.action.domain, auth.action.nonce);
         principal
@@ -561,11 +586,31 @@ impl AuthorizationManager {
     }
 
     /// Verifies and consumes a Phoenix authorization.
-    pub fn authorize_phoenix(
+    ///
+    /// The signed action is not checked against a call envelope. Prefer
+    /// [`Self::authorize_phoenix_action`] in public contract methods.
+    pub fn authorize_unbound_phoenix(
         &mut self,
         auth: &PhoenixSignatureAuthorization,
         now: u64,
     ) -> Principal {
+        let principal = self.verify_phoenix(auth, now);
+        self.consume_action(principal, auth.action.domain, auth.action.nonce);
+        if let Some(key) = auth.replay_key {
+            self.replays.consume(principal, key);
+        }
+        principal
+    }
+
+    /// Verifies and consumes a Phoenix Schnorr authorization for an exact call
+    /// envelope.
+    pub fn authorize_phoenix_action(
+        &mut self,
+        auth: &PhoenixSignatureAuthorization,
+        envelope: ActionEnvelope,
+        now: u64,
+    ) -> Principal {
+        auth.action.assert_envelope(envelope);
         let principal = self.verify_phoenix(auth, now);
         self.consume_action(principal, auth.action.domain, auth.action.nonce);
         if let Some(key) = auth.replay_key {

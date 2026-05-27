@@ -72,7 +72,7 @@ impl Ownable {
         let owner = self
             .owner
             .unwrap_or_else(|| panic!("{}", error::NOT_INITIALIZED));
-        authorizer.require_principal(owner, authorization)
+        authorizer.require_principal_unbound(owner, authorization)
     }
 
     /// Authorizes the owner through runtime context or an action-bound signed

@@ -764,10 +764,20 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     };
 
     let mut authorizations = AuthorizationManager::new();
-    assert_eq!(authorizations.authorize_moonlight(&auth, 99), moonlight);
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        [66u8; 32],
+    );
+    assert_eq!(
+        authorizations.authorize_moonlight_action(&auth, envelope, 99),
+        moonlight
+    );
     assert_eq!(authorizations.nonce(moonlight, domain), 1);
     assert_panics(|| {
-        authorizations.authorize_moonlight(&auth, 99);
+        authorizations.authorize_moonlight_action(&auth, envelope, 99);
     });
 
     let bad_action = AuthorizedAction {
@@ -783,7 +793,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
         signature: bad_signature,
     };
     assert_panics(|| {
-        authorizations.authorize_moonlight(&bad_auth, 99);
+        authorizations.authorize_moonlight_action(&bad_auth, envelope, 99);
     });
 
     let mut rng = StdRng::seed_from_u64(1234);
@@ -806,7 +816,21 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
         signature: phoenix_sk.sign(&mut rng, phoenix_action.message_hash()),
         replay_key: Some([99u8; 32]),
     };
-    assert_eq!(authorizations.authorize_phoenix(&phoenix_auth, 1), phoenix);
+    let phoenix_envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        [77u8; 32],
+        action_id,
+        [22u8; 32],
+    );
+    assert_eq!(
+        authorizations.authorize_phoenix_action(
+            &phoenix_auth,
+            phoenix_envelope,
+            1,
+        ),
+        phoenix
+    );
     assert_eq!(authorizations.nonce(phoenix, [77u8; 32]), 1);
     assert!(authorizations.replay_used(phoenix, [99u8; 32]));
 
@@ -823,7 +847,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
         replay_key: None,
     };
     assert_panics(|| {
-        authorizations.authorize_phoenix(&expired, 10);
+        authorizations.authorize_phoenix_action(&expired, phoenix_envelope, 10);
     });
 
     let bad_signature_action = AuthorizedAction {
@@ -839,7 +863,17 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
         replay_key: None,
     };
     assert_panics(|| {
-        authorizations.authorize_phoenix(&bad_signature, 1);
+        authorizations.authorize_phoenix_action(
+            &bad_signature,
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                [77u8; 32],
+                action_id,
+                [23u8; 32],
+            ),
+            1,
+        );
     });
     assert_eq!(authorizations.nonce(phoenix, [77u8; 32]), 1);
 
@@ -856,7 +890,17 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
         replay_key: Some([99u8; 32]),
     };
     assert_panics(|| {
-        authorizations.authorize_phoenix(&replay, 1);
+        authorizations.authorize_phoenix_action(
+            &replay,
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                [77u8; 32],
+                action_id,
+                [24u8; 32],
+            ),
+            1,
+        );
     });
     assert_eq!(authorizations.nonce(phoenix, [77u8; 32]), 1);
 
@@ -873,7 +917,11 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
         replay_key: None,
     };
     assert_panics(|| {
-        authorizations.authorize_phoenix(&wrong_key, 1);
+        authorizations.authorize_phoenix_action(
+            &wrong_key,
+            phoenix_envelope,
+            1,
+        );
     });
 
     let bounded_domain = [88u8; 32];

@@ -4,6 +4,7 @@ members = [
     "examples/authorization_counter",
     "examples/drc20_roles_pausable",
     "examples/drc721_collection",
+    "examples/moonlight_call_router",
     "examples/multisig_controller",
     "examples/proxy_counter",
 ]

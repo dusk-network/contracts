@@ -1694,6 +1694,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "moonlight-call-router"
+version = "0.1.0"
+dependencies = [
+ "bytecheck",
+ "dusk-core",
+ "dusk-forge",
+ "rkyv",
+]
+
+[[package]]
 name = "msgpacker"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"

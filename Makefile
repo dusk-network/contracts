@@ -1,4 +1,6 @@
 STANDARDS_EXAMPLES := standards/examples/authorization_counter standards/examples/drc20_roles_pausable standards/examples/drc721_collection standards/examples/multisig_controller standards/examples/proxy_counter
+STANDARDS_TEST_HELPERS := standards/examples/moonlight_call_router
+STANDARDS_WASM_CONTRACTS := $(STANDARDS_EXAMPLES) $(STANDARDS_TEST_HELPERS)
 LEGACY_SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
 STANDARDS_PROPTEST_CASES ?= 8192
 STANDARDS_PROPTEST_MAX_SHRINK_ITERS ?= 16384
@@ -28,11 +30,11 @@ standards-test: ## Test the Dusk standards crate without the Dusk compiler bundl
 	$(MAKE) -C standards/dusk-contract-standards test
 
 standards-wasm: ## Build standards reference contracts without the Dusk compiler bundle
-	$(MAKE) $(STANDARDS_EXAMPLES) MAKECMDGOALS=wasm
+	$(MAKE) $(STANDARDS_WASM_CONTRACTS) MAKECMDGOALS=wasm
 
 standards-clippy: ## Run standards clippy without the Dusk compiler bundle
 	$(MAKE) -C standards/dusk-contract-standards clippy
-	$(MAKE) $(STANDARDS_EXAMPLES) MAKECMDGOALS=clippy
+	$(MAKE) $(STANDARDS_WASM_CONTRACTS) MAKECMDGOALS=clippy
 
 standards-ci: standards-fmt standards-check standards-clippy standards-test standards-wasm ## Run regular standards CI checks
 
@@ -64,7 +66,7 @@ setup-compiler: ## Setup the Dusk Contract Compiler
 
 doc: $(LEGACY_SUBDIRS) ## Run doc gen
 
-$(LEGACY_SUBDIRS) $(STANDARDS_EXAMPLES):
+$(LEGACY_SUBDIRS) $(STANDARDS_WASM_CONTRACTS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-.PHONY: all test help standards-fmt standards-check standards-test standards-wasm standards-clippy standards-ci standards-data-drivers standards-properties standards-data-driver-fuzz standards-hardening $(LEGACY_SUBDIRS) $(STANDARDS_EXAMPLES)
+.PHONY: all test help standards-fmt standards-check standards-test standards-wasm standards-clippy standards-ci standards-data-drivers standards-properties standards-data-driver-fuzz standards-hardening $(LEGACY_SUBDIRS) $(STANDARDS_WASM_CONTRACTS)

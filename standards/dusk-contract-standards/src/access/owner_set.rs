@@ -85,7 +85,7 @@ impl OwnerSet {
         let Some(authorization) = authorization else {
             panic!("{}", error::UNAUTHORIZED);
         };
-        authorizer.require_signed_if(authorization, |principal| {
+        authorizer.require_unbound_signed_if(authorization, |principal| {
             self.is_owner(principal)
         })
     }

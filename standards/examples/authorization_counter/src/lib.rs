@@ -52,9 +52,9 @@ mod authorization_counter {
     use authorization_counter_types::{
         NonceQuery, SetValueByMoonlight, SetValueByPhoenix,
     };
-    use dusk_contract_standards::auth::AuthorizationManager;
+    use dusk_contract_standards::auth::{ActionEnvelope, AuthorizationManager};
     use dusk_contract_standards::core::{NonceDomain, Principal};
-    use dusk_core::abi::{self, ContractId};
+    use dusk_core::abi;
 
     const SET_VALUE_DOMAIN: NonceDomain = [3u8; 32];
     const SET_VALUE_ACTION: [u8; 32] = [4u8; 32];
@@ -94,58 +94,35 @@ mod authorization_counter {
             self.authorizations.nonce(query.principal, query.domain)
         }
         pub fn set_value_by_moonlight(&mut self, args: SetValueByMoonlight) {
-            self.assert_action(
-                args.authorization.action.chain_id,
-                args.authorization.action.contract,
-                args.authorization.action.domain,
-                args.authorization.action.action_id,
-                args.authorization.action.payload_hash,
-                args.amount,
+            let envelope = self.action_envelope(args.amount);
+            let principal = self.authorizations.authorize_moonlight_action(
+                &args.authorization,
+                envelope,
+                now(),
             );
-            let principal = self
-                .authorizations
-                .authorize_moonlight(&args.authorization, now());
             self.set_value(principal, args.amount);
         }
         pub fn set_value_by_phoenix(&mut self, args: SetValueByPhoenix) {
-            self.assert_action(
-                args.authorization.action.chain_id,
-                args.authorization.action.contract,
-                args.authorization.action.domain,
-                args.authorization.action.action_id,
-                args.authorization.action.payload_hash,
-                args.amount,
+            let envelope = self.action_envelope(args.amount);
+            let principal = self.authorizations.authorize_phoenix_action(
+                &args.authorization,
+                envelope,
+                now(),
             );
-            let principal = self
-                .authorizations
-                .authorize_phoenix(&args.authorization, now());
             self.set_value(principal, args.amount);
         }
 
-        fn assert_action(
-            &self,
-            chain_id: u8,
-            contract: ContractId,
-            domain: NonceDomain,
-            action_id: [u8; 32],
-            payload_hash: [u8; 32],
-            amount: u64,
-        ) {
+        fn action_envelope(&self, amount: u64) -> ActionEnvelope {
             if !self.initialized {
                 panic!("AuthorizationCounter: not initialized");
             }
-            if chain_id != abi::chain_id() {
-                panic!("AuthorizationCounter: wrong chain");
-            }
-            if contract != abi::self_id() {
-                panic!("AuthorizationCounter: wrong contract");
-            }
-            if domain != SET_VALUE_DOMAIN || action_id != SET_VALUE_ACTION {
-                panic!("AuthorizationCounter: wrong action");
-            }
-            if payload_hash != amount_hash(amount) {
-                panic!("AuthorizationCounter: wrong payload");
-            }
+            ActionEnvelope::new(
+                abi::chain_id(),
+                abi::self_id(),
+                SET_VALUE_DOMAIN,
+                SET_VALUE_ACTION,
+                amount_hash(amount),
+            )
         }
 
         fn set_value(&mut self, principal: Principal, amount: u64) {

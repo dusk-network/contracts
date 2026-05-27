@@ -27,9 +27,10 @@ cargo build --manifest-path standards/Cargo.toml --release -Z build-std=core,all
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
+  -p moonlight-call-router \
   -p multisig-controller \
   -p proxy-counter \
-  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,multisig-controller/contract,proxy-counter/contract
+  --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,moonlight-call-router/contract,multisig-controller/contract,proxy-counter/contract
 
 echo "Running VM reference deployment tests"
 cargo test --manifest-path standards/Cargo.toml -p dusk-contract-standards --test examples_vm -- --ignored

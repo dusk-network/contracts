@@ -185,7 +185,7 @@ impl UpgradeAdmin {
         authorizer: &mut Authorizer<'_>,
         authorization: Option<&SignedAuthorization>,
     ) -> Principal {
-        authorizer.require_principal(self.admin, authorization)
+        authorizer.require_principal_unbound(self.admin, authorization)
     }
 
     /// Authorizes the upgrade admin through runtime context or an action-bound

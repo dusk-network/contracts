@@ -1,0 +1,17 @@
+[package]
+name = "moonlight-call-router"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+dusk-core = "=1.6.0"
+dusk-forge = "=0.3.0"
+bytecheck = { workspace = true }
+rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
+
+[features]
+contract = ["dusk-core/abi-dlmalloc"]
+data-driver = []

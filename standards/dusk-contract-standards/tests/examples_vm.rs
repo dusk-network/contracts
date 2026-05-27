@@ -37,6 +37,7 @@ use dusk_core::signatures::schnorr::{
     PublicKey as SchnorrPublicKey, SecretKey as SchnorrSecretKey,
 };
 use dusk_core::transfer::data::ContractCall;
+use dusk_core::transfer::TRANSFER_CONTRACT;
 use dusk_core::JubJubScalar;
 use dusk_vm::host_queries;
 use dusk_vm::{ContractData, Session, VM};
@@ -116,6 +117,14 @@ struct Drc20AdminCall {
 
 #[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[archive_attr(derive(CheckBytes))]
+struct ForwardCall {
+    contract: ContractId,
+    function: String,
+    args: Vec<u8>,
+}
+
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[archive_attr(derive(CheckBytes))]
 struct Drc721ExampleInit {
     owner: Principal,
     token: Init721,
@@ -191,6 +200,12 @@ fn wasm_examples_deploy_and_answer_queries() {
     let mut session = vm.genesis_session(CHAIN_ID);
 
     let admin = phoenix_principal(7);
+    let moonlight_router = deploy(
+        &mut session,
+        "moonlight_call_router.wasm",
+        TRANSFER_CONTRACT.to_bytes(),
+        &(),
+    );
     let auth_counter =
         deploy(&mut session, "authorization_counter.wasm", [19u8; 32], &());
     let auth_value: u64 = session
@@ -256,6 +271,35 @@ fn wasm_examples_deploy_and_answer_queries() {
         )
         .is_err());
     exercise_drc20_signed_calls(&mut session, drc20, admin);
+    let moonlight_owner_sk = moonlight_secret(110);
+    let moonlight_owner_pk = BlsPublicKey::from(&moonlight_owner_sk);
+    let moonlight_owner = Principal::moonlight(&moonlight_owner_pk);
+    let moonlight_drc20 = deploy(
+        &mut session,
+        "drc20_roles_pausable.wasm",
+        [25u8; 32],
+        &Drc20ExampleInit {
+            admin,
+            token: Init20 {
+                name: "VM Moonlight Token".into(),
+                symbol: "VML".into(),
+                decimals: 9,
+                initial_balances: vec![InitBalance {
+                    account: moonlight_owner,
+                    amount: 100,
+                }],
+            },
+            cap: 1_000,
+        },
+    );
+    exercise_drc20_moonlight_observed_caller(
+        &mut session,
+        moonlight_router,
+        moonlight_drc20,
+        moonlight_owner_pk,
+        moonlight_owner,
+        admin,
+    );
 
     let drc721 = deploy(
         &mut session,
@@ -951,6 +995,72 @@ fn exercise_drc20_signed_calls(
         )
         .is_err());
     assert_contract_nonce(session, contract, admin, TOKEN_ADMIN_DOMAIN, 3);
+}
+
+fn exercise_drc20_moonlight_observed_caller(
+    session: &mut Session,
+    router: ContractId,
+    contract: ContractId,
+    moonlight_pk: BlsPublicKey,
+    moonlight: Principal,
+    admin: Principal,
+) {
+    assert_drc20_balance(session, contract, moonlight, 100);
+    assert_drc20_balance(session, contract, admin, 0);
+
+    let transfer = TransferCall20 {
+        to: admin,
+        amount: 25,
+    };
+    assert!(session
+        .call::<_, ()>(contract, "transfer", &transfer, GAS_LIMIT)
+        .is_err());
+    assert_drc20_balance(session, contract, moonlight, 100);
+    assert_drc20_balance(session, contract, admin, 0);
+
+    session
+        .set_meta(Metadata::PUBLIC_SENDER, Some(moonlight_pk))
+        .expect("set public sender");
+    session
+        .call::<_, Vec<u8>>(
+            router,
+            "forward",
+            &ForwardCall {
+                contract,
+                function: "transfer".to_string(),
+                args: Session::serialize_data(&transfer)
+                    .expect("serialize routed transfer"),
+            },
+            GAS_LIMIT,
+        )
+        .expect("route transfer with observed Moonlight caller");
+    let _ = session.remove_meta(Metadata::PUBLIC_SENDER);
+    assert_drc20_balance(session, contract, moonlight, 75);
+    assert_drc20_balance(session, contract, admin, 25);
+
+    let outsider_pk = BlsPublicKey::from(&moonlight_secret(111));
+    session
+        .set_meta(Metadata::PUBLIC_SENDER, Some(outsider_pk))
+        .expect("set outsider public sender");
+    assert!(session
+        .call::<_, Vec<u8>>(
+            router,
+            "forward",
+            &ForwardCall {
+                contract,
+                function: "transfer".to_string(),
+                args: Session::serialize_data(&TransferCall20 {
+                    to: admin,
+                    amount: 1,
+                })
+                .expect("serialize routed transfer"),
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+    let _ = session.remove_meta(Metadata::PUBLIC_SENDER);
+    assert_drc20_balance(session, contract, moonlight, 75);
+    assert_drc20_balance(session, contract, admin, 25);
 }
 
 fn exercise_drc721_signed_calls(
@@ -2756,6 +2866,19 @@ fn assert_contract_nonce(
         .expect("query contract nonce")
         .data;
     assert_eq!(actual_nonce, nonce);
+}
+
+fn assert_drc20_balance(
+    session: &mut Session,
+    contract: ContractId,
+    account: Principal,
+    expected: u64,
+) {
+    let actual: u64 = session
+        .call(contract, "balance_of", &BalanceOf20 { account }, GAS_LIMIT)
+        .expect("query drc20 balance")
+        .data;
+    assert_eq!(actual, expected);
 }
 
 fn assert_proxy_value(
