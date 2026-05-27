@@ -7,16 +7,14 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-dusk-core = { workspace = true }
-dusk-data-driver = { workspace = true, optional = true }
-dusk-forge = { workspace = true }
+dusk-core = "=1.6.0"
+dusk-data-driver = { version = "=0.3.2-alpha.1", optional = true }
+dusk-forge = "=0.3.0"
 dusk-contract-standards = { path = "../../dusk-contract-standards" }
 bytecheck = { workspace = true }
 rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
-serde = { workspace = true, optional = true }
-serde_json = { workspace = true, default-features = false, features = [
-    "alloc",
-], optional = true }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
 
 [features]
 contract = ["dusk-core/abi-dlmalloc", "dusk-contract-standards/contract"]

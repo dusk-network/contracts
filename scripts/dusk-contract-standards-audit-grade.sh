@@ -14,15 +14,16 @@ cd "$ROOT_DIR"
 
 echo "Checking formatting"
 cargo fmt --check
+cargo fmt --manifest-path standards/Cargo.toml --all --check
 
 echo "Running standards clippy"
-cargo clippy -p dusk-contract-standards --all-targets -- -D warnings
+cargo clippy --manifest-path standards/Cargo.toml -p dusk-contract-standards --all-targets -- -D warnings
 
 echo "Running native standards tests"
-cargo test -p dusk-contract-standards
+cargo test --manifest-path standards/Cargo.toml -p dusk-contract-standards
 
 echo "Building reference contract Wasm"
-cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
+cargo build --manifest-path standards/Cargo.toml --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
@@ -31,7 +32,7 @@ cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   --features authorization-counter/contract,drc20-roles-pausable/contract,drc721-collection/contract,multisig-controller/contract,proxy-counter/contract
 
 echo "Running VM reference deployment tests"
-cargo test -p dusk-contract-standards --test examples_vm -- --ignored
+cargo test --manifest-path standards/Cargo.toml -p dusk-contract-standards --test examples_vm -- --ignored
 
 echo "Running long property and data-driver hardening"
 STANDARDS_PROPTEST_CASES="$STANDARDS_PROPTEST_CASES" \

@@ -12,10 +12,10 @@ DEPLOY_NONCE_BASE="${DEPLOY_NONCE_BASE:-100}"
 cd "$ROOT_DIR"
 
 echo "Running standards unit tests"
-cargo test -p dusk-contract-standards
+cargo test --manifest-path standards/Cargo.toml -p dusk-contract-standards
 
 echo "Building example contracts"
-cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
+cargo build --manifest-path standards/Cargo.toml --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
@@ -25,7 +25,7 @@ cargo build --release -Z build-std=core,alloc --target wasm32-unknown-unknown \
 
 echo "Building Forge data-drivers"
 CARGO_TARGET_DIR="${ROOT_DIR}/target/data-driver" \
-cargo build --release --target wasm32-unknown-unknown \
+cargo build --manifest-path standards/Cargo.toml --release --target wasm32-unknown-unknown \
   -p authorization-counter \
   -p drc20-roles-pausable \
   -p drc721-collection \
@@ -34,7 +34,7 @@ cargo build --release --target wasm32-unknown-unknown \
   --features authorization-counter/data-driver-js,drc20-roles-pausable/data-driver-js,drc721-collection/data-driver-js,multisig-controller/data-driver-js,proxy-counter/data-driver-js
 
 echo "Running VM example deployment tests"
-cargo test -p dusk-contract-standards --test examples_vm -- --ignored
+cargo test --manifest-path standards/Cargo.toml -p dusk-contract-standards --test examples_vm -- --ignored
 
 if [[ -z "$RUSK_WALLET_BIN" ]]; then
   cat >&2 <<'MSG'
@@ -96,7 +96,7 @@ if [[ -n "$WALLET_RESTORE_FILE" && ! -f "$WALLET_DIR/wallet.keystore.json" ]]; t
 fi
 
 encode_args() {
-  cargo run -q -p dusk-contract-standards --example encode_local_smoke_args -- "$@"
+  cargo run -q --manifest-path standards/Cargo.toml -p dusk-contract-standards --example encode_local_smoke_args -- "$@"
 }
 
 deploy_contract() {
