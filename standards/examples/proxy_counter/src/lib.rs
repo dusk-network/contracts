@@ -165,7 +165,7 @@ mod proxy_counter {
             let previous = self.value();
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     PROXY_ADMIN_DOMAIN,
                     SET_VALUE_ACTION,
@@ -178,7 +178,7 @@ mod proxy_counter {
         pub fn prepare_upgrade(&mut self, args: PrepareUpgrade) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     PROXY_ADMIN_DOMAIN,
                     PREPARE_UPGRADE_ACTION,
@@ -199,7 +199,7 @@ mod proxy_counter {
         pub fn activate_upgrade(&mut self, args: AdminCall) -> Vec<u8> {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     PROXY_ADMIN_DOMAIN,
                     ACTIVATE_UPGRADE_ACTION,
@@ -214,7 +214,7 @@ mod proxy_counter {
         pub fn cancel_pending_upgrade(&mut self, args: AdminCall) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     PROXY_ADMIN_DOMAIN,
                     CANCEL_UPGRADE_ACTION,
@@ -227,7 +227,7 @@ mod proxy_counter {
         pub fn rollback(&mut self, args: AdminCall) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     PROXY_ADMIN_DOMAIN,
                     ROLLBACK_ACTION,
@@ -240,7 +240,7 @@ mod proxy_counter {
         pub fn finalize_rollback_window(&mut self, args: AdminCall) {
             let caller = self.authorize_admin_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     PROXY_ADMIN_DOMAIN,
                     FINALIZE_ROLLBACK_ACTION,

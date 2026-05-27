@@ -370,7 +370,7 @@ mod multisig_controller {
             let Some(authorization) = authorization else {
                 panic!("{}", error::UNAUTHORIZED);
             };
-            let envelope = ActionEnvelope::new(
+            let envelope = ActionEnvelope::for_current_chain(
                 abi::self_id(),
                 MULTISIG_CONTROLLER_DOMAIN,
                 action_id,
@@ -397,7 +397,7 @@ mod multisig_controller {
                 &self.authorizations,
                 CallContext::current(),
                 approvals,
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     MULTISIG_CONTROLLER_DOMAIN,
                     action_id,

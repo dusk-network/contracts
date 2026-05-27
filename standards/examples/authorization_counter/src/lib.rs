@@ -89,6 +89,7 @@ mod authorization_counter {
         }
         pub fn set_value_by_moonlight(&mut self, args: SetValueByMoonlight) {
             self.assert_action(
+                args.authorization.action.chain_id,
                 args.authorization.action.contract,
                 args.authorization.action.domain,
                 args.authorization.action.action_id,
@@ -102,6 +103,7 @@ mod authorization_counter {
         }
         pub fn set_value_by_phoenix(&mut self, args: SetValueByPhoenix) {
             self.assert_action(
+                args.authorization.action.chain_id,
                 args.authorization.action.contract,
                 args.authorization.action.domain,
                 args.authorization.action.action_id,
@@ -116,6 +118,7 @@ mod authorization_counter {
 
         fn assert_action(
             &self,
+            chain_id: u8,
             contract: ContractId,
             domain: NonceDomain,
             action_id: [u8; 32],
@@ -124,6 +127,9 @@ mod authorization_counter {
         ) {
             if !self.initialized {
                 panic!("AuthorizationCounter: not initialized");
+            }
+            if chain_id != abi::chain_id() {
+                panic!("AuthorizationCounter: wrong chain");
             }
             if contract != abi::self_id() {
                 panic!("AuthorizationCounter: wrong contract");

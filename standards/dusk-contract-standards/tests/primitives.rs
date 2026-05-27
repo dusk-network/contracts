@@ -46,6 +46,8 @@ use dusk_core::JubJubScalar;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+const TEST_CHAIN_ID: u8 = 0xD5;
+
 fn p(byte: u8) -> Principal {
     Principal::phoenix([byte; 32])
 }
@@ -88,6 +90,7 @@ fn signed_moonlight_action(
     nonce: u64,
 ) -> SignedAuthorization {
     let action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -116,6 +119,7 @@ fn signed_phoenix_action(
     rng_seed: u64,
 ) -> SignedAuthorization {
     let action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -251,8 +255,13 @@ fn threshold_multisig_requires_distinct_quorum_before_nonce_consumption() {
     let domain = [105u8; 32];
     let action_id = [106u8; 32];
     let payload_hash = [107u8; 32];
-    let envelope =
-        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
 
     let mut multisig = ThresholdMultisig::new();
     multisig.init(MultisigConfig {
@@ -326,8 +335,13 @@ fn threshold_multisig_requires_distinct_quorum_before_nonce_consumption() {
     assert_eq!(manager.nonce(owner_a, domain), 0);
     assert_eq!(manager.nonce(outsider, domain), 0);
 
-    let wrong_envelope =
-        ActionEnvelope::new(contract, domain, action_id, [108u8; 32]);
+    let wrong_envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        [108u8; 32],
+    );
     assert_panics(|| {
         multisig.authorize_action(
             &mut manager,
@@ -376,8 +390,13 @@ fn threshold_multisig_counts_observed_moonlight_and_contract_callers() {
     let domain = [113u8; 32];
     let action_id = [114u8; 32];
     let payload_hash = [115u8; 32];
-    let envelope =
-        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
 
     let mut multisig = ThresholdMultisig::new();
     multisig.init(MultisigConfig {
@@ -722,6 +741,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     let action_id = [55u8; 32];
 
     let action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -745,6 +765,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     });
 
     let bad_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         nonce: 1,
         principal: p(99),
         ..action
@@ -764,6 +785,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     let phoenix_pk = SchnorrPublicKey::from(&phoenix_sk);
     let phoenix = Principal::phoenix_public_key(&phoenix_pk);
     let phoenix_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain: [77u8; 32],
         action_id,
@@ -783,6 +805,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     assert!(authorizations.replay_used(phoenix, [99u8; 32]));
 
     let expired_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         expires_at: 9,
         nonce: 1,
         ..phoenix_action
@@ -798,6 +821,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     });
 
     let bad_signature_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         nonce: 1,
         payload_hash: [23u8; 32],
         ..phoenix_action
@@ -814,6 +838,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     assert_eq!(authorizations.nonce(phoenix, [77u8; 32]), 1);
 
     let replay_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         nonce: 1,
         payload_hash: [24u8; 32],
         ..phoenix_action
@@ -833,6 +858,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     let wrong_pk = SchnorrPublicKey::from(&wrong_sk);
     let wrong_key = PhoenixSignatureAuthorization {
         action: AuthorizedAction {
+            chain_id: TEST_CHAIN_ID,
             nonce: 1,
             ..phoenix_action
         },
@@ -846,6 +872,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
 
     let bounded_domain = [88u8; 32];
     let bounded_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain: bounded_domain,
         action_id,
@@ -864,7 +891,27 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     assert_panics(|| {
         bounded.authorize_signed_action(
             &bounded_signed,
-            ActionEnvelope::new(contract, bounded_domain, action_id, [2u8; 32]),
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                bounded_domain,
+                action_id,
+                [2u8; 32],
+            ),
+            9,
+        );
+    });
+    assert_eq!(bounded.nonce(moonlight, bounded_domain), 0);
+    assert_panics(|| {
+        bounded.authorize_signed_action(
+            &bounded_signed,
+            ActionEnvelope::new(
+                TEST_CHAIN_ID.wrapping_add(1),
+                contract,
+                bounded_domain,
+                action_id,
+                [1u8; 32],
+            ),
             9,
         );
     });
@@ -872,7 +919,13 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     assert_eq!(
         bounded.authorize_signed_action(
             &bounded_signed,
-            ActionEnvelope::new(contract, bounded_domain, action_id, [1u8; 32]),
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                bounded_domain,
+                action_id,
+                [1u8; 32]
+            ),
             10,
         ),
         moonlight
@@ -880,6 +933,7 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     assert_eq!(bounded.nonce(moonlight, bounded_domain), 1);
 
     let expired_bounded_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         nonce: 1,
         expires_at: 10,
         payload_hash: [3u8; 32],
@@ -894,7 +948,13 @@ fn authorization_manager_verifies_moonlight_and_phoenix_paths() {
     assert_panics(|| {
         bounded.authorize_signed_action(
             &expired_bounded,
-            ActionEnvelope::new(contract, bounded_domain, action_id, [3u8; 32]),
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                bounded_domain,
+                action_id,
+                [3u8; 32],
+            ),
             11,
         );
     });
@@ -932,6 +992,7 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
     );
 
     let moonlight_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -961,6 +1022,7 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
     let phoenix_pk = SchnorrPublicKey::from(&phoenix_sk);
     let phoenix = Principal::phoenix_public_key(&phoenix_pk);
     let phoenix_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -984,7 +1046,13 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
             &mut manager,
             CallContext::none(),
             Some(&phoenix_signed),
-            ActionEnvelope::new(contract, domain, action_id, [49u8; 32]),
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                domain,
+                action_id,
+                [49u8; 32]
+            ),
             0,
         ),
         phoenix
@@ -995,6 +1063,7 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
     access.init_admin(moonlight);
     access.grant_role(moonlight, role, phoenix);
     let phoenix_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         nonce: 1,
         payload_hash: [51u8; 32],
         ..phoenix_action
@@ -1012,7 +1081,13 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
             &mut manager,
             CallContext::none(),
             Some(&phoenix_signed),
-            ActionEnvelope::new(contract, domain, action_id, [51u8; 32]),
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                domain,
+                action_id,
+                [51u8; 32]
+            ),
             0,
         ),
         phoenix
@@ -1020,6 +1095,7 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
 
     let upgrade = UpgradeAdmin::new(phoenix, c(52), 0, 0);
     let phoenix_action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         nonce: 2,
         payload_hash: [53u8; 32],
         ..phoenix_action
@@ -1036,7 +1112,13 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
             &mut manager,
             CallContext::none(),
             Some(&phoenix_signed),
-            ActionEnvelope::new(contract, domain, action_id, [53u8; 32]),
+            ActionEnvelope::new(
+                TEST_CHAIN_ID,
+                contract,
+                domain,
+                action_id,
+                [53u8; 32]
+            ),
             0,
         ),
         phoenix
@@ -1064,9 +1146,15 @@ fn failed_owner_role_and_admin_signed_checks_do_not_consume_nonce() {
     let domain = [76u8; 32];
     let action_id = [77u8; 32];
     let payload_hash = [78u8; 32];
-    let envelope =
-        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
     let action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,

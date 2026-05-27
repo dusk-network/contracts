@@ -267,7 +267,7 @@ mod drc20_roles_pausable {
         pub fn approve_by_authorization(&mut self, args: SignedApproveCall) {
             let principal = self.authorizations.authorize_signed_action(
                 &args.authorization,
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     SIGNED_APPROVE_DOMAIN,
                     SIGNED_APPROVE_ACTION,
@@ -328,7 +328,7 @@ mod drc20_roles_pausable {
             self.authorize_role_action(
                 MINTER_ROLE,
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     TOKEN_ADMIN_DOMAIN,
                     MINT_ACTION,
@@ -353,7 +353,7 @@ mod drc20_roles_pausable {
             let caller = self.authorize_role_action(
                 PAUSER_ROLE,
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     TOKEN_ADMIN_DOMAIN,
                     PAUSE_ACTION,
@@ -368,7 +368,7 @@ mod drc20_roles_pausable {
             let caller = self.authorize_role_action(
                 PAUSER_ROLE,
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     TOKEN_ADMIN_DOMAIN,
                     UNPAUSE_ACTION,
@@ -390,7 +390,7 @@ mod drc20_roles_pausable {
             let caller = self.authorize_role_action(
                 admin,
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     TOKEN_ADMIN_DOMAIN,
                     GRANT_ROLE_ACTION,
@@ -408,7 +408,7 @@ mod drc20_roles_pausable {
             let caller = self.authorize_role_action(
                 admin,
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     TOKEN_ADMIN_DOMAIN,
                     REVOKE_ROLE_ACTION,

@@ -50,7 +50,7 @@ optional replay key. This proves control of the Phoenix signing key without
 pretending that Phoenix exposes an address-like runtime caller.
 
 `SignedAuthorization` is the ABI-facing wrapper for explicit authorizations,
-`ActionEnvelope` is the expected contract/domain/action/payload binding, and
+`ActionEnvelope` is the expected chain/contract/domain/action/payload binding, and
 `Authorizer` is the reusable per-call adapter. `Ownable`, `OwnerSet`,
 `AccessControl`, and `UpgradeAdmin` expose action-bound helper methods that
 accept runtime Moonlight/contract callers when available and otherwise verify
@@ -113,6 +113,7 @@ an intentional retry.
 Clients sign an `AuthorizedAction` for the exact contract action they want to
 execute. The action includes:
 
+- `chain_id`: the Dusk chain id returned by the target runtime;
 - `contract`: the target `ContractId`;
 - `domain`: a 32-byte nonce stream chosen by the contract;
 - `action_id`: a 32-byte id for the exported operation;
@@ -138,8 +139,8 @@ The DRC20 reference exposes `approve_by_authorization`. Its payload hash is:
 5. `keccak256` over the concatenated bytes.
 
 Admin references follow the same rule. Signed mint, role, royalty, and proxy
-calls validate `contract`, `domain`, `action_id`, and `payload_hash` before
-consuming the signature nonce.
+calls validate `chain_id`, `contract`, `domain`, `action_id`, and
+`payload_hash` before consuming the signature nonce.
 
 The DRC721 reference exposes `approve_by_authorization` and
 `set_approval_for_all_by_authorization`. Token approval hashes use the ASCII

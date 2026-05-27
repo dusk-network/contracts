@@ -2,8 +2,10 @@
 
 ## Replay Domains
 
-Every signed action must bind `contract`, `domain`, `action_id`, `nonce`,
-`principal`, and `payload_hash`. Use separate nonce domains for unrelated
+Every signed action must bind `chain_id`, `contract`, `domain`, `action_id`,
+`nonce`, `principal`, and `payload_hash`. Chain binding prevents an unused
+authorization for one network from being replayed on another network with the
+same contract id and nonce state. Use separate nonce domains for unrelated
 flows: token approvals, role admin, proxy upgrades, voting, and application
 actions should not share a nonce stream unless that coupling is deliberate.
 

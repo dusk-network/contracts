@@ -2348,6 +2348,25 @@ fn exercise_authorization_counter_signed_calls(
         )
         .is_err());
 
+    let mut wrong_chain_action =
+        counter_action(contract, moonlight, 1, 0, SET_VALUE_ACTION, 12);
+    wrong_chain_action.chain_id = CHAIN_ID.wrapping_add(1);
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_value_by_moonlight",
+            &SetValueByMoonlight {
+                authorization: moonlight_auth(
+                    &moonlight_sk,
+                    moonlight_pk,
+                    wrong_chain_action,
+                ),
+                amount: 12,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+
     let wrong_action = counter_action(contract, moonlight, 1, 0, [9u8; 32], 12);
     assert!(session
         .call::<_, ()>(
@@ -2524,6 +2543,26 @@ fn exercise_authorization_counter_signed_calls(
         )
         .is_err());
 
+    let mut wrong_chain_action =
+        counter_action(contract, phoenix, 1, 0, SET_VALUE_ACTION, 22);
+    wrong_chain_action.chain_id = CHAIN_ID.wrapping_add(1);
+    assert!(session
+        .call::<_, ()>(
+            contract,
+            "set_value_by_phoenix",
+            &SetValueByPhoenix {
+                authorization: phoenix_auth(
+                    &mut rng,
+                    &phoenix_sk,
+                    phoenix_pk,
+                    wrong_chain_action,
+                ),
+                amount: 22,
+            },
+            GAS_LIMIT,
+        )
+        .is_err());
+
     let wrong_action = counter_action(contract, phoenix, 1, 0, [8u8; 32], 22);
     assert!(session
         .call::<_, ()>(
@@ -2610,6 +2649,7 @@ fn authorized_action(
     payload_hash: [u8; 32],
 ) -> AuthorizedAction {
     AuthorizedAction {
+        chain_id: CHAIN_ID,
         contract,
         domain,
         action_id,

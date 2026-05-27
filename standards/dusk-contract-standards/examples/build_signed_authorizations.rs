@@ -21,6 +21,7 @@ const SIGNED_APPROVE_DOMAIN: NonceDomain = [12u8; 32];
 const SIGNED_APPROVE_ACTION: [u8; 32] = [18u8; 32];
 const NFT_SIGNED_APPROVE_DOMAIN: NonceDomain = [29u8; 32];
 const NFT_SIGNED_APPROVE_ACTION: [u8; 32] = [30u8; 32];
+const CHAIN_ID: u8 = 0xFA;
 const EXAMPLE_EXPIRES_AT: u64 = 1_000;
 
 fn main() {
@@ -38,6 +39,7 @@ fn main() {
         signature: moonlight_sk.sign(&moonlight_action.message_bytes()),
     });
     moonlight.assert_action(
+        CHAIN_ID,
         contract,
         SIGNED_APPROVE_DOMAIN,
         SIGNED_APPROVE_ACTION,
@@ -57,6 +59,7 @@ fn main() {
         replay_key: None,
     });
     phoenix.assert_action(
+        CHAIN_ID,
         contract,
         SIGNED_APPROVE_DOMAIN,
         SIGNED_APPROVE_ACTION,
@@ -79,6 +82,7 @@ fn main() {
             replay_key: None,
         });
     nft_approval.assert_action(
+        CHAIN_ID,
         contract,
         NFT_SIGNED_APPROVE_DOMAIN,
         NFT_SIGNED_APPROVE_ACTION,
@@ -94,6 +98,7 @@ fn drc20_signed_approve_action(
     nonce: u64,
 ) -> AuthorizedAction {
     AuthorizedAction {
+        chain_id: CHAIN_ID,
         contract,
         domain: SIGNED_APPROVE_DOMAIN,
         action_id: SIGNED_APPROVE_ACTION,
@@ -124,6 +129,7 @@ fn drc721_signed_approve_action(
     nonce: u64,
 ) -> AuthorizedAction {
     AuthorizedAction {
+        chain_id: CHAIN_ID,
         contract,
         domain: NFT_SIGNED_APPROVE_DOMAIN,
         action_id: NFT_SIGNED_APPROVE_ACTION,

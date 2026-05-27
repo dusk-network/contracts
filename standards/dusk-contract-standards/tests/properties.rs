@@ -41,6 +41,8 @@ use proptest::prelude::*;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+const TEST_CHAIN_ID: u8 = 0xD5;
+
 fn standards_proptest_config() -> ProptestConfig {
     ProptestConfig {
         cases: env_usize("STANDARDS_PROPTEST_CASES")
@@ -828,6 +830,7 @@ fn apply_drc721_token(token: &mut Drc721, op: &Drc721Op) -> bool {
 #[derive(Clone, Copy, Debug)]
 enum AuthCase {
     Good,
+    WrongChain,
     WrongContract,
     WrongDomain,
     WrongAction,
@@ -845,6 +848,7 @@ enum AuthCase {
 fn auth_case_strategy() -> impl Strategy<Value = AuthCase> {
     prop_oneof![
         Just(AuthCase::Good),
+        Just(AuthCase::WrongChain),
         Just(AuthCase::WrongContract),
         Just(AuthCase::WrongDomain),
         Just(AuthCase::WrongAction),
@@ -875,6 +879,7 @@ fn signed_action(
 #[derive(Clone, Copy, Debug)]
 enum PhoenixAuthCase {
     Good,
+    WrongChain,
     WrongContract,
     WrongDomain,
     WrongAction,
@@ -893,6 +898,7 @@ enum PhoenixAuthCase {
 fn phoenix_auth_case_strategy() -> impl Strategy<Value = PhoenixAuthCase> {
     prop_oneof![
         Just(PhoenixAuthCase::Good),
+        Just(PhoenixAuthCase::WrongChain),
         Just(PhoenixAuthCase::WrongContract),
         Just(PhoenixAuthCase::WrongDomain),
         Just(PhoenixAuthCase::WrongAction),
@@ -933,9 +939,15 @@ fn authorization_probe(case: AuthCase) -> (bool, u64) {
     let domain = [33u8; 32];
     let action_id = [34u8; 32];
     let payload_hash = [35u8; 32];
-    let envelope =
-        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
     let mut action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -948,6 +960,10 @@ fn authorization_probe(case: AuthCase) -> (bool, u64) {
     let expected = match case {
         AuthCase::Good => signer,
         AuthCase::WrongExpected => principal(1),
+        AuthCase::WrongChain => {
+            action.chain_id = TEST_CHAIN_ID.wrapping_add(1);
+            signer
+        }
         AuthCase::WrongContract => {
             action.contract = contract_id(36);
             signer
@@ -1055,9 +1071,15 @@ fn phoenix_authorization_probe(case: PhoenixAuthCase) -> (bool, u64, bool) {
     let action_id = [46u8; 32];
     let payload_hash = [47u8; 32];
     let replay_key = [48u8; 32];
-    let envelope =
-        ActionEnvelope::new(contract, domain, action_id, payload_hash);
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
     let mut action = AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
         contract,
         domain,
         action_id,
@@ -1070,6 +1092,10 @@ fn phoenix_authorization_probe(case: PhoenixAuthCase) -> (bool, u64, bool) {
     let expected = match case {
         PhoenixAuthCase::Good | PhoenixAuthCase::ReplayKeyUsed => signer,
         PhoenixAuthCase::WrongExpected => principal(1),
+        PhoenixAuthCase::WrongChain => {
+            action.chain_id = TEST_CHAIN_ID.wrapping_add(1);
+            signer
+        }
         PhoenixAuthCase::WrongContract => {
             action.contract = contract_id(49);
             signer

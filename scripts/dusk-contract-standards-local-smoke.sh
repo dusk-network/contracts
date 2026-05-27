@@ -63,6 +63,21 @@ if ! command -v xxd >/dev/null 2>&1; then
   exit 2
 fi
 
+if [[ -z "${DUSK_CHAIN_ID:-}" ]]; then
+  chain_info="$(curl -fsS "${RUSK_URL}/on/node/info" 2>/dev/null || true)"
+  DUSK_CHAIN_ID="$(
+    printf '%s' "$chain_info" |
+      sed -n 's/.*"chain_id"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' |
+      head -n1
+  )"
+  if [[ -z "$DUSK_CHAIN_ID" ]]; then
+    DUSK_CHAIN_ID=250
+    echo "Could not read chain id from ${RUSK_URL}; defaulting DUSK_CHAIN_ID=${DUSK_CHAIN_ID}" >&2
+  fi
+fi
+export DUSK_CHAIN_ID
+echo "Using DUSK_CHAIN_ID=${DUSK_CHAIN_ID}"
+
 mkdir -p "$WALLET_DIR"
 
 if [[ -n "$WALLET_RESTORE_FILE" && ! -f "$WALLET_DIR/wallet.keystore.json" ]]; then

@@ -669,6 +669,7 @@ fn authorized_action(
     payload_hash: [u8; 32],
 ) -> AuthorizedAction {
     AuthorizedAction {
+        chain_id: chain_id(),
         contract,
         domain,
         action_id,
@@ -677,6 +678,13 @@ fn authorized_action(
         principal,
         payload_hash,
     }
+}
+
+fn chain_id() -> u8 {
+    env::var("DUSK_CHAIN_ID")
+        .unwrap_or_else(|_| "250".to_string())
+        .parse()
+        .expect("DUSK_CHAIN_ID must be a u8")
 }
 
 fn phoenix_auth(

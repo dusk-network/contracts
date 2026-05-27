@@ -46,14 +46,15 @@ The layer does not assume:
 
 - an Ethereum-like `msg.sender` for Phoenix;
 - delegatecall-style proxy storage behavior;
-- off-chain signatures are safe without contract/domain/action/payload binding;
+- off-chain signatures are safe without chain/contract/domain/action/payload
+  binding;
 - zero principals are valid owners, recipients, spenders, operators, or admins.
 
 ## Invariant Matrix
 
 | ID | Invariant | Primary Coverage |
 | --- | --- | --- |
-| AUTH-1 | Signed actions bind contract, domain, action id, payload hash, nonce, principal, and expiry before nonce/replay consumption. | `tests/primitives.rs`, `tests/properties.rs`, VM test, local-node smoke |
+| AUTH-1 | Signed actions bind chain id, contract, domain, action id, payload hash, nonce, principal, and expiry before nonce/replay consumption. | `tests/primitives.rs`, `tests/properties.rs`, VM test, local-node smoke |
 | AUTH-2 | Rejected envelope, signature, expiry, role, owner, admin, and replay-key cases do not advance nonce/replay state. | property negative matrices, VM test, local-node smoke |
 | AUTH-3 | Phoenix authorization proves control of a Schnorr key principal and never relies on observed caller identity. | primitives, properties, signed auth example, local-node smoke |
 | AUTH-4 | Moonlight owners can authorize by observed root caller or signed BLS action; contract owners only by observed immediate contract caller. Transfer-contract entrypoint calls map to `public_sender`, while nested calls do not. | primitives, reference contracts, VM test, `core::context` unit tests |

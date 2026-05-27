@@ -28,6 +28,8 @@ pub const AUTH_MESSAGE_PREFIX: &[u8] = b"dusk-contract-standards/auth/v1";
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[archive_attr(derive(CheckBytes))]
 pub struct ActionEnvelope {
+    /// Dusk chain id this authorization is intended for.
+    pub chain_id: u8,
     /// Contract this authorization is intended for.
     pub contract: ContractId,
     /// Domain-separated nonce stream.
@@ -41,17 +43,36 @@ pub struct ActionEnvelope {
 impl ActionEnvelope {
     /// Creates a new expected action envelope.
     pub const fn new(
+        chain_id: u8,
         contract: ContractId,
         domain: NonceDomain,
         action_id: [u8; 32],
         payload_hash: [u8; 32],
     ) -> Self {
         Self {
+            chain_id,
             contract,
             domain,
             action_id,
             payload_hash,
         }
+    }
+
+    /// Creates an expected action envelope for the current runtime chain.
+    #[cfg(all(target_family = "wasm", feature = "contract"))]
+    pub fn for_current_chain(
+        contract: ContractId,
+        domain: NonceDomain,
+        action_id: [u8; 32],
+        payload_hash: [u8; 32],
+    ) -> Self {
+        Self::new(
+            dusk_core::abi::chain_id(),
+            contract,
+            domain,
+            action_id,
+            payload_hash,
+        )
     }
 }
 
@@ -62,6 +83,8 @@ impl ActionEnvelope {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[archive_attr(derive(CheckBytes))]
 pub struct AuthorizedAction {
+    /// Dusk chain id this authorization is intended for.
+    pub chain_id: u8,
     /// Contract this authorization is intended for.
     pub contract: ContractId,
     /// Domain-separated nonce stream.
@@ -91,6 +114,7 @@ impl AuthorizedAction {
         let principal = self.principal.to_bytes();
         let mut out = Vec::with_capacity(
             AUTH_MESSAGE_PREFIX.len()
+                + 1
                 + 32
                 + 32
                 + 32
@@ -101,6 +125,7 @@ impl AuthorizedAction {
                 + 32,
         );
         out.extend_from_slice(AUTH_MESSAGE_PREFIX);
+        out.push(self.chain_id);
         out.extend_from_slice(&self.contract.to_bytes());
         out.extend_from_slice(&self.domain);
         out.extend_from_slice(&self.action_id);
@@ -121,12 +146,14 @@ impl AuthorizedAction {
     /// action id, and payload hash.
     pub fn assert_matches(
         &self,
+        chain_id: u8,
         contract: ContractId,
         domain: NonceDomain,
         action_id: [u8; 32],
         payload_hash: [u8; 32],
     ) {
         self.assert_envelope(ActionEnvelope::new(
+            chain_id,
             contract,
             domain,
             action_id,
@@ -136,7 +163,8 @@ impl AuthorizedAction {
 
     /// Panics unless this action matches the expected call envelope.
     pub fn assert_envelope(&self, envelope: ActionEnvelope) {
-        if self.contract != envelope.contract
+        if self.chain_id != envelope.chain_id
+            || self.contract != envelope.contract
             || self.domain != envelope.domain
             || self.action_id != envelope.action_id
             || self.payload_hash != envelope.payload_hash
@@ -201,12 +229,14 @@ impl SignedAuthorization {
     /// Panics unless the signed action matches the exact call envelope.
     pub fn assert_action(
         &self,
+        chain_id: u8,
         contract: ContractId,
         domain: NonceDomain,
         action_id: [u8; 32],
         payload_hash: [u8; 32],
     ) {
         self.assert_envelope(ActionEnvelope::new(
+            chain_id,
             contract,
             domain,
             action_id,

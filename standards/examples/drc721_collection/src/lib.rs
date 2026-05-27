@@ -246,7 +246,7 @@ mod drc721_collection {
             }
             let principal = self.authorizations.authorize_signed_action(
                 &args.authorization,
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_SIGNED_APPROVE_DOMAIN,
                     NFT_SIGNED_APPROVE_ACTION,
@@ -279,7 +279,7 @@ mod drc721_collection {
             }
             let principal = self.authorizations.authorize_signed_action(
                 &args.authorization,
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_SIGNED_APPROVE_DOMAIN,
                     NFT_SIGNED_APPROVAL_FOR_ALL_ACTION,
@@ -320,7 +320,7 @@ mod drc721_collection {
             }
             self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     MINT_ACTION,
@@ -339,7 +339,7 @@ mod drc721_collection {
             self.pausable.assert_not_paused();
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     PAUSE_ACTION,
@@ -353,7 +353,7 @@ mod drc721_collection {
             self.pausable.assert_paused();
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     UNPAUSE_ACTION,
@@ -371,7 +371,7 @@ mod drc721_collection {
             validate_royalty(args.info);
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     SET_DEFAULT_ROYALTY_ACTION,
@@ -384,7 +384,7 @@ mod drc721_collection {
         pub fn clear_default_royalty(&mut self, args: AdminCall) {
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     CLEAR_DEFAULT_ROYALTY_ACTION,
@@ -398,7 +398,7 @@ mod drc721_collection {
             validate_royalty(args.info);
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     SET_TOKEN_ROYALTY_ACTION,
@@ -411,7 +411,7 @@ mod drc721_collection {
         pub fn clear_token_royalty(&mut self, args: ClearTokenRoyaltyCall) {
             let caller = self.authorize_owner_action(
                 args.authorization.as_ref(),
-                ActionEnvelope::new(
+                ActionEnvelope::for_current_chain(
                     abi::self_id(),
                     NFT_ADMIN_DOMAIN,
                     CLEAR_TOKEN_ROYALTY_ACTION,
