@@ -1,12 +1,14 @@
 [workspace]
 members = [
     "dusk-contract-standards",
+    "examples/multisig_controller",
 ]
 
 resolver = "2"
 
 [workspace.dependencies]
 dusk-core = "=1.6.0"
+dusk-forge = "=0.3.0"
 dusk-vm = "=1.6.0"
 
 bytecheck = { version = "0.6.12", default-features = false }

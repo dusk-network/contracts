@@ -6,6 +6,7 @@ check:
 test:
 	@cargo test -p dusk-contract-standards
 	@cargo test -p dusk-contract-standards --features serde
+	@cargo test -p dusk-contract-standards --features forge
 
 wasm:
 

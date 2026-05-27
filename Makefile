@@ -1,5 +1,5 @@
-STANDARDS_EXAMPLES :=
-STANDARDS_WASM_CONTRACTS :=
+STANDARDS_EXAMPLES := standards/examples/multisig_controller
+STANDARDS_WASM_CONTRACTS := $(STANDARDS_EXAMPLES)
 LEGACY_SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
 STANDARDS_PROPTEST_CASES ?= 8192
 STANDARDS_PROPTEST_MAX_SHRINK_ITERS ?= 16384
@@ -29,10 +29,11 @@ standards-test: ## Test the Dusk standards crate without the Dusk compiler bundl
 	$(MAKE) -C standards/dusk-contract-standards test
 
 standards-wasm: ## Build standards reference contracts without the Dusk compiler bundle
-	@true
+	$(MAKE) $(STANDARDS_WASM_CONTRACTS) MAKECMDGOALS=wasm
 
 standards-clippy: ## Run standards clippy without the Dusk compiler bundle
 	$(MAKE) -C standards/dusk-contract-standards clippy
+	$(MAKE) $(STANDARDS_WASM_CONTRACTS) MAKECMDGOALS=clippy
 
 standards-ci: standards-fmt standards-check standards-clippy standards-test standards-wasm ## Run regular standards CI checks
 
