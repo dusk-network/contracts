@@ -24,12 +24,12 @@ mod drc20_phoenix_reference {
     use dusk_contract_standards::token::drc20_phoenix::{
         AdminId, Drc20Phoenix, ExistingNullifiersQuery, Init, OpeningQuery,
         PausedEvent, PrivateAssetLeaf, PrivateAssetNote, PrivateAssetProof,
-        PrivateAssetPublicInputBuilder, PrivateAssetPublicInputs, PrivateBurn,
-        PrivateBurnEvent, PrivateMint, PrivateMintEvent, PrivateNoteOpening,
-        PrivateTransfer, PrivateTransferEvent, RootExistsQuery,
-        SyncNullifiersQuery, SyncQuery, TokenMetadata, UnpausedEvent,
-        PAUSED_TOPIC, PRIVATE_BURN_TOPIC, PRIVATE_MINT_TOPIC,
-        PRIVATE_TRANSFER_TOPIC, UNPAUSED_TOPIC,
+        PrivateAssetPublicInputBuilder, PrivateAssetPublicInputs,
+        PrivateAssetVerifierInfo, PrivateBurn, PrivateBurnEvent, PrivateMint,
+        PrivateMintEvent, PrivateNoteOpening, PrivateTransfer,
+        PrivateTransferEvent, RootExistsQuery, SyncNullifiersQuery, SyncQuery,
+        TokenMetadata, UnpausedEvent, PAUSED_TOPIC, PRIVATE_BURN_TOPIC,
+        PRIVATE_MINT_TOPIC, PRIVATE_TRANSFER_TOPIC, UNPAUSED_TOPIC,
     };
     use dusk_core::abi;
     use dusk_core::abi::ContractId;
@@ -158,6 +158,16 @@ mod drc20_phoenix_reference {
         /// Returns verifier data hash.
         pub fn verifier_data_hash(&self) -> BlsScalar {
             self.token().verifier_data_hash()
+        }
+
+        /// Returns verifier manifest hash.
+        pub fn verifier_manifest_hash(&self) -> BlsScalar {
+            self.token().verifier_manifest_hash()
+        }
+
+        /// Returns verifier keys and pinned hashes.
+        pub fn verifier_manifest(&self) -> Vec<PrivateAssetVerifierInfo> {
+            self.token().verifier_manifest()
         }
 
         /// Builds proof public inputs for client/prover integrations.

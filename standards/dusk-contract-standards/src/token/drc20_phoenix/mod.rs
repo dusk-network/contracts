@@ -29,6 +29,83 @@ pub const DRC20_PHOENIX_VERSION: u32 = 1;
 
 const ROOT_WINDOW_DEFAULT: usize = 64;
 
+/// V1 proof arity: public mint with one private output.
+pub const V1_MINT_0_1: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Mint, 0, 1);
+/// V1 proof arity: public mint with two private outputs.
+pub const V1_MINT_0_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Mint, 0, 2);
+/// V1 proof arity: private transfer with one input and two outputs.
+pub const V1_TRANSFER_1_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Transfer, 1, 2);
+/// V1 proof arity: private transfer with two inputs and two outputs.
+pub const V1_TRANSFER_2_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Transfer, 2, 2);
+/// V1 proof arity: private transfer with three inputs and two outputs.
+pub const V1_TRANSFER_3_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Transfer, 3, 2);
+/// V1 proof arity: private transfer with four inputs and two outputs.
+pub const V1_TRANSFER_4_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Transfer, 4, 2);
+/// V1 proof arity: private burn with one input and no change output.
+pub const V1_BURN_1_0: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 1, 0);
+/// V1 proof arity: private burn with one input and one change output.
+pub const V1_BURN_1_1: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 1, 1);
+/// V1 proof arity: private burn with one input and two change outputs.
+pub const V1_BURN_1_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 1, 2);
+/// V1 proof arity: private burn with two inputs and no change output.
+pub const V1_BURN_2_0: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 2, 0);
+/// V1 proof arity: private burn with two inputs and one change output.
+pub const V1_BURN_2_1: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 2, 1);
+/// V1 proof arity: private burn with two inputs and two change outputs.
+pub const V1_BURN_2_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 2, 2);
+/// V1 proof arity: private burn with three inputs and no change output.
+pub const V1_BURN_3_0: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 3, 0);
+/// V1 proof arity: private burn with three inputs and one change output.
+pub const V1_BURN_3_1: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 3, 1);
+/// V1 proof arity: private burn with three inputs and two change outputs.
+pub const V1_BURN_3_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 3, 2);
+/// V1 proof arity: private burn with four inputs and no change output.
+pub const V1_BURN_4_0: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 4, 0);
+/// V1 proof arity: private burn with four inputs and one change output.
+pub const V1_BURN_4_1: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 4, 1);
+/// V1 proof arity: private burn with four inputs and two change outputs.
+pub const V1_BURN_4_2: PrivateAssetVerifierKey =
+    PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 4, 2);
+
+/// Supported v1 proof arities.
+pub const V1_SUPPORTED_ARITIES: &[PrivateAssetVerifierKey] = &[
+    V1_MINT_0_1,
+    V1_MINT_0_2,
+    V1_TRANSFER_1_2,
+    V1_TRANSFER_2_2,
+    V1_TRANSFER_3_2,
+    V1_TRANSFER_4_2,
+    V1_BURN_1_0,
+    V1_BURN_1_1,
+    V1_BURN_1_2,
+    V1_BURN_2_0,
+    V1_BURN_2_1,
+    V1_BURN_2_2,
+    V1_BURN_3_0,
+    V1_BURN_3_1,
+    V1_BURN_3_2,
+    V1_BURN_4_0,
+    V1_BURN_4_1,
+    V1_BURN_4_2,
+];
+
 /// Event topic for private mints.
 pub const PRIVATE_MINT_TOPIC: &str = "drc20_phoenix/private_mint";
 /// Event topic for private transfers.
@@ -74,6 +151,11 @@ pub mod error {
         "DRC20Phoenix: public input mismatch";
     /// Proof verification failed.
     pub const INVALID_PROOF: &str = "DRC20Phoenix: invalid proof";
+    /// Verifier config is malformed.
+    pub const INVALID_VERIFIER_CONFIG: &str =
+        "DRC20Phoenix: invalid verifier config";
+    /// No verifier exists for the requested arity.
+    pub const UNSUPPORTED_ARITY: &str = "DRC20Phoenix: unsupported arity";
     /// Supply cap would be exceeded.
     pub const CAP_EXCEEDED: &str = "DRC20Phoenix: cap exceeded";
     /// Arithmetic overflow or underflow.
@@ -112,8 +194,8 @@ pub struct Init {
     pub cap: Option<u128>,
     /// Number of recent roots to retain. Zero uses the default.
     pub root_window: u16,
-    /// Production verifier data for the private asset circuit.
-    pub verifier_data: Vec<u8>,
+    /// Production verifier set for private asset circuits.
+    pub verifier_set: Vec<PrivateAssetVerifierConfig>,
 }
 
 /// Private asset circuit mode.
@@ -144,6 +226,99 @@ impl PrivateAssetCircuitMode {
     fn scalar(self) -> BlsScalar {
         BlsScalar::from(self as u64)
     }
+}
+
+/// Versioned verifier key used for production verifier dispatch.
+#[derive(
+    Archive,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[archive_attr(derive(CheckBytes))]
+pub struct PrivateAssetVerifierKey {
+    /// Standard/circuit version.
+    pub version: u32,
+    /// Circuit mode.
+    pub mode: PrivateAssetCircuitMode,
+    /// Fixed input-note count.
+    pub input_count: u8,
+    /// Fixed output-note count.
+    pub output_count: u8,
+}
+
+impl PrivateAssetVerifierKey {
+    /// Creates a v1 verifier key for a mode/arity pair.
+    pub const fn new(
+        mode: PrivateAssetCircuitMode,
+        input_count: u8,
+        output_count: u8,
+    ) -> Self {
+        Self {
+            version: DRC20_PHOENIX_VERSION,
+            mode,
+            input_count,
+            output_count,
+        }
+    }
+
+    /// Returns true when this is one of the standard v1 arities.
+    pub fn is_supported_v1(self) -> bool {
+        V1_SUPPORTED_ARITIES.contains(&self)
+    }
+
+    fn scalars(self) -> [BlsScalar; 4] {
+        [
+            BlsScalar::from(self.version as u64),
+            self.mode.scalar(),
+            BlsScalar::from(self.input_count as u64),
+            BlsScalar::from(self.output_count as u64),
+        ]
+    }
+}
+
+/// Production verifier data for one fixed arity.
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[archive_attr(derive(CheckBytes))]
+pub struct PrivateAssetVerifierConfig {
+    /// Versioned mode/arity key.
+    pub key: PrivateAssetVerifierKey,
+    /// Verifier data bytes consumed by `abi::verify_plonk`.
+    pub verifier_data: Vec<u8>,
+    /// Expected verifier data hash.
+    pub verifier_data_hash: BlsScalar,
+}
+
+impl PrivateAssetVerifierConfig {
+    /// Builds a config and computes the pinned verifier data hash.
+    pub fn new(key: PrivateAssetVerifierKey, verifier_data: Vec<u8>) -> Self {
+        let verifier_data_hash =
+            verifier_data_hash_for_key(key, &verifier_data);
+        Self {
+            key,
+            verifier_data,
+            verifier_data_hash,
+        }
+    }
+}
+
+/// Public verifier metadata returned by query APIs.
+#[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[archive_attr(derive(CheckBytes))]
+pub struct PrivateAssetVerifierInfo {
+    /// Versioned mode/arity key.
+    pub key: PrivateAssetVerifierKey,
+    /// Pinned verifier data hash.
+    pub verifier_data_hash: BlsScalar,
 }
 
 /// Encrypted private note stored in the public note log.
@@ -665,7 +840,7 @@ pub struct Drc20Phoenix {
     root_ring: Vec<BlsScalar>,
     root_set: BTreeSet<BlsScalar>,
     root_window: usize,
-    verifier_data: Vec<u8>,
+    verifier_set: Vec<PrivateAssetVerifierConfig>,
 }
 
 impl Default for Drc20Phoenix {
@@ -698,7 +873,7 @@ impl Drc20Phoenix {
             root_ring: Vec::new(),
             root_set: BTreeSet::new(),
             root_window: ROOT_WINDOW_DEFAULT,
-            verifier_data: Vec::new(),
+            verifier_set: Vec::new(),
         }
     }
 
@@ -713,9 +888,7 @@ impl Drc20Phoenix {
         if init.metadata.name.is_empty() || init.metadata.symbol.is_empty() {
             panic!("{}", error::INVALID_VALUE);
         }
-        if init.verifier_data.is_empty() {
-            panic!("{}", error::INVALID_PROOF);
-        }
+        assert_valid_verifier_set(&init.verifier_set);
 
         self.metadata = init.metadata;
         self.chain_id = init.chain_id;
@@ -732,7 +905,7 @@ impl Drc20Phoenix {
             0 => ROOT_WINDOW_DEFAULT,
             n => n as usize,
         };
-        self.verifier_data = init.verifier_data;
+        self.verifier_set = init.verifier_set;
         self.initialized = true;
         self.checkpoint_root();
     }
@@ -854,13 +1027,27 @@ impl Drc20Phoenix {
         self.paused
     }
 
-    /// Returns the verifier data hash.
+    /// Returns a hash over the configured verifier manifest.
     pub fn verifier_data_hash(&self) -> BlsScalar {
+        self.verifier_manifest_hash()
+    }
+
+    /// Returns a hash over the configured verifier manifest.
+    pub fn verifier_manifest_hash(&self) -> BlsScalar {
         self.assert_initialized();
-        hash_bytes_with_domain(
-            b"DRC20Phoenix.verifier_data",
-            &self.verifier_data,
-        )
+        verifier_manifest_hash(&self.verifier_set)
+    }
+
+    /// Returns configured verifier keys and hashes.
+    pub fn verifier_manifest(&self) -> Vec<PrivateAssetVerifierInfo> {
+        self.assert_initialized();
+        self.verifier_set
+            .iter()
+            .map(|config| PrivateAssetVerifierInfo {
+                key: config.key,
+                verifier_data_hash: config.verifier_data_hash,
+            })
+            .collect()
     }
 
     /// Pauses mint, transfer, and burn.
@@ -1097,13 +1284,35 @@ impl Drc20Phoenix {
         if proof.public_inputs != expected {
             panic!("{}", error::PUBLIC_INPUT_MISMATCH);
         }
-        if !verifier.verify(
-            &self.verifier_data,
-            &proof.proof,
-            &expected.to_scalars(),
-        ) {
+        let verifier_data = self.verifier_data_for(&expected);
+        if !verifier.verify(verifier_data, &proof.proof, &expected.to_scalars())
+        {
             panic!("{}", error::INVALID_PROOF);
         }
+    }
+
+    fn verifier_data_for(
+        &self,
+        public_inputs: &PrivateAssetPublicInputs,
+    ) -> &[u8] {
+        let input_count = u8::try_from(public_inputs.nullifiers.len())
+            .expect(error::UNSUPPORTED_ARITY);
+        let output_count = u8::try_from(public_inputs.output_commitments.len())
+            .expect(error::UNSUPPORTED_ARITY);
+        let key = PrivateAssetVerifierKey {
+            version: public_inputs.version,
+            mode: public_inputs.mode,
+            input_count,
+            output_count,
+        };
+        if !key.is_supported_v1() {
+            panic!("{}", error::UNSUPPORTED_ARITY);
+        }
+        self.verifier_set
+            .iter()
+            .find(|config| config.key == key)
+            .map(|config| config.verifier_data.as_slice())
+            .unwrap_or_else(|| panic!("{}", error::UNSUPPORTED_ARITY))
     }
 
     fn assert_initialized(&self) {
@@ -1357,6 +1566,57 @@ pub fn compute_nullifier(
     )
 }
 
+/// Computes the pinned verifier data hash for a fixed arity.
+pub fn verifier_data_hash_for_key(
+    key: PrivateAssetVerifierKey,
+    verifier_data: &[u8],
+) -> BlsScalar {
+    let mut scalars = Vec::with_capacity(5);
+    scalars.extend_from_slice(&key.scalars());
+    scalars.push(hash_bytes_with_domain(
+        b"DRC20Phoenix.verifier_data.bytes.v1",
+        verifier_data,
+    ));
+    hash_scalars(b"DRC20Phoenix.verifier_data_hash.v1", &scalars)
+}
+
+/// Computes a manifest hash over all configured verifier keys.
+pub fn verifier_manifest_hash(
+    verifier_set: &[PrivateAssetVerifierConfig],
+) -> BlsScalar {
+    let mut scalars = Vec::with_capacity(verifier_set.len() * 5 + 1);
+    scalars.push(BlsScalar::from(verifier_set.len() as u64));
+    for config in verifier_set {
+        scalars.extend_from_slice(&config.key.scalars());
+        scalars.push(config.verifier_data_hash);
+    }
+    hash_scalars(b"DRC20Phoenix.verifier_manifest.v1", &scalars)
+}
+
+fn assert_valid_verifier_set(verifier_set: &[PrivateAssetVerifierConfig]) {
+    if verifier_set.is_empty() {
+        panic!("{}", error::INVALID_VERIFIER_CONFIG);
+    }
+
+    let mut seen = BTreeSet::new();
+    for config in verifier_set {
+        if config.verifier_data.is_empty()
+            || !config.key.is_supported_v1()
+            || verifier_data_hash_for_key(config.key, &config.verifier_data)
+                != config.verifier_data_hash
+            || !seen.insert(config.key)
+        {
+            panic!("{}", error::INVALID_VERIFIER_CONFIG);
+        }
+    }
+
+    for required in V1_SUPPORTED_ARITIES {
+        if !seen.contains(required) {
+            panic!("{}", error::INVALID_VERIFIER_CONFIG);
+        }
+    }
+}
+
 /// Builds a proof intent hash.
 pub fn intent_hash(intent: PrivateAssetIntent<'_>) -> BlsScalar {
     let mut scalars = Vec::with_capacity(
@@ -1531,8 +1791,18 @@ mod tests {
             admin: admin(1),
             cap,
             root_window,
-            verifier_data: b"test-verifier".to_vec(),
+            verifier_set: test_verifier_set(),
         }
+    }
+
+    fn test_verifier_set() -> Vec<PrivateAssetVerifierConfig> {
+        V1_SUPPORTED_ARITIES
+            .iter()
+            .copied()
+            .map(|key| {
+                PrivateAssetVerifierConfig::new(key, b"test-verifier".to_vec())
+            })
+            .collect()
     }
 
     fn token(cap: Option<u128>) -> Drc20Phoenix {
@@ -1590,8 +1860,12 @@ mod tests {
         token: &Drc20Phoenix,
         root: BlsScalar,
         nullifiers: Vec<BlsScalar>,
-        outputs: Vec<PrivateAssetNote>,
+        mut outputs: Vec<PrivateAssetNote>,
     ) -> PrivateTransfer {
+        if outputs.len() == 1 {
+            outputs
+                .push(note(token.asset_id(), 60_000 + nullifiers.len() as u64));
+        }
         let public_inputs = token.public_inputs(PublicInputContext {
             mode: PrivateAssetCircuitMode::Transfer,
             root,
@@ -1657,6 +1931,11 @@ mod tests {
         assert_eq!(token.cap(), Some(1_000));
         assert_eq!(token.num_notes(), 0);
         assert!(token.root_exists(token.root()));
+        assert_eq!(token.verifier_manifest().len(), V1_SUPPORTED_ARITIES.len());
+        assert_eq!(
+            token.verifier_manifest_hash(),
+            verifier_manifest_hash(&test_verifier_set())
+        );
         assert_eq!(
             token.asset_id(),
             derive_asset_id(7, c(9), &metadata(), [3; 32])
@@ -1719,9 +1998,26 @@ mod tests {
         assert_panics(|| token.init(bad_admin));
         assert!(!token.initialized);
 
-        let mut bad_verifier = init(None, 0);
-        bad_verifier.verifier_data.clear();
-        assert_panics(|| token.init(bad_verifier));
+        let mut empty_verifier_set = init(None, 0);
+        empty_verifier_set.verifier_set.clear();
+        assert_panics(|| token.init(empty_verifier_set));
+        assert!(!token.initialized);
+
+        let mut duplicate_verifier = init(None, 0);
+        duplicate_verifier
+            .verifier_set
+            .push(duplicate_verifier.verifier_set[0].clone());
+        assert_panics(|| token.init(duplicate_verifier));
+        assert!(!token.initialized);
+
+        let mut missing_verifier = init(None, 0);
+        missing_verifier.verifier_set.pop();
+        assert_panics(|| token.init(missing_verifier));
+        assert!(!token.initialized);
+
+        let mut bad_hash = init(None, 0);
+        bad_hash.verifier_set[0].verifier_data_hash = s(999);
+        assert_panics(|| token.init(bad_hash));
         assert!(!token.initialized);
 
         token.init(init(None, 0));
@@ -1968,6 +2264,61 @@ mod tests {
             );
         });
         assert!(token.existing_nullifiers(vec![s(711)]).is_empty());
+    }
+
+    #[test]
+    fn unsupported_arity_is_rejected_before_mutation() {
+        let mut token = token(None);
+        token.mint_private_with_verifier(
+            mint_call(&token, 50, vec![note(token.asset_id(), 1)]),
+            &StrictTestVerifier,
+        );
+        let snapshot = (
+            token.minted_supply(),
+            token.burned_supply(),
+            token.num_notes(),
+            token.sync_nullifiers(0, 0),
+            token.root(),
+        );
+
+        let outputs = vec![note(token.asset_id(), 2)];
+        let public_inputs = token.public_inputs(PublicInputContext {
+            mode: PrivateAssetCircuitMode::Transfer,
+            root: token.root(),
+            nullifiers: &[s(9_001)],
+            outputs: &outputs,
+            public_mint_amount: 0,
+            public_burn_amount: 0,
+            memo_hash: s(903),
+        });
+        let unsupported = PrivateTransfer {
+            chain_id: 7,
+            contract_id: c(9),
+            asset_id: token.asset_id(),
+            root: token.root(),
+            nullifiers: vec![s(9_001)],
+            outputs,
+            proof: proof_for(public_inputs),
+            memo_hash: s(903),
+            block_height: 4,
+        };
+
+        assert_panics(|| {
+            token.transfer_private_with_verifier(
+                unsupported,
+                &StrictTestVerifier,
+            );
+        });
+        assert_eq!(
+            snapshot,
+            (
+                token.minted_supply(),
+                token.burned_supply(),
+                token.num_notes(),
+                token.sync_nullifiers(0, 0),
+                token.root(),
+            )
+        );
     }
 
     #[test]

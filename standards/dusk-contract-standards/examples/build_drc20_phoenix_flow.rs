@@ -7,8 +7,8 @@
 use dusk_contract_standards::token::drc20_phoenix::{
     compute_owner_commitment, compute_value_commitment, Drc20Phoenix, Init,
     PrivateAssetCircuitMode, PrivateAssetNote, PrivateAssetProof,
-    PrivateAssetPublicInputBuilder, PrivateBurn, PrivateMint, PrivateTransfer,
-    TokenMetadata,
+    PrivateAssetPublicInputBuilder, PrivateAssetVerifierConfig, PrivateBurn,
+    PrivateMint, PrivateTransfer, TokenMetadata, V1_SUPPORTED_ARITIES,
 };
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
@@ -30,7 +30,7 @@ fn main() {
         admin: ADMIN,
         cap: Some(1_000_000),
         root_window: 64,
-        verifier_data: b"replace-with-private-asset-verifier-data".to_vec(),
+        verifier_set: dev_verifier_set(),
     });
 
     let mint_outputs =
@@ -130,6 +130,19 @@ fn main() {
         transfer.proof.public_inputs.to_scalars().len(),
         burn.proof.public_inputs.to_scalars().len()
     );
+}
+
+fn dev_verifier_set() -> Vec<PrivateAssetVerifierConfig> {
+    V1_SUPPORTED_ARITIES
+        .iter()
+        .copied()
+        .map(|key| {
+            PrivateAssetVerifierConfig::new(
+                key,
+                b"replace-with-private-asset-verifier-data".to_vec(),
+            )
+        })
+        .collect()
 }
 
 fn note(asset_id: BlsScalar, seed: u64) -> PrivateAssetNote {
