@@ -38,6 +38,23 @@ The practical conclusion is:
   For a normal smart-contract token whose gas is paid in native DUSK, this can
   remain an application-level contract plus circuit/prover/client standard.
 
+Implementation status on this branch:
+
+- `standards/dusk-contract-standards/src/token/drc20_phoenix` implements the
+  first standards-layer state machine, type model, verifier boundary,
+  append-only note tree, root retention, nullifier set/log, mint, transfer,
+  burn, pause, and tests.
+- The production path is intentionally strict: it calls the host PLONK verifier
+  in contract builds and rejects proofs in native non-contract builds. Native
+  tests use a `#[cfg(test)]` verifier that cannot be imported by downstream
+  contracts.
+- This branch does not include the final custom private-asset circuit/prover.
+  It defines the public-input and verifier boundary that the circuit must
+  satisfy.
+- This branch does not add a Forge reference contract because it is based on
+  the current `origin/main` standards skeleton, not the larger stacked standards
+  branch that contains Forge examples and access-control helpers.
+
 ## Relationship To `genesis/transfer`
 
 The genesis transfer contract can be viewed as three layers:

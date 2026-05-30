@@ -4,10 +4,6 @@
 //
 // Copyright (c) DUSK NETWORK. All rights reserved.
 
-//! Dusk-native reusable contract standards.
+//! Token standards.
 
-#![no_std]
-
-extern crate alloc;
-
-pub mod token;
+pub mod drc20_phoenix;
