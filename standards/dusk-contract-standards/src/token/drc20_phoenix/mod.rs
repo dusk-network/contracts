@@ -20,6 +20,8 @@ use bytecheck::CheckBytes;
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
 use dusk_forge::ContractEvent;
+#[cfg(not(all(target_family = "wasm", feature = "contract")))]
+use dusk_poseidon::{Domain, Hash as PoseidonHash};
 use rkyv::{Archive, Deserialize, Serialize};
 
 /// Standard version bound into asset ids and proof intents.
@@ -190,19 +192,12 @@ impl PrivateAssetNote {
 
     /// Computes the domain-separated note commitment.
     pub fn computed_commitment(&self) -> BlsScalar {
-        let payload_hash = hash_bytes_with_domain(
-            b"DRC20Phoenix.note.payload",
-            &self.encrypted_payload,
-        );
-        hash_scalars(
-            b"DRC20Phoenix.note.v1",
-            &[
-                self.asset_id,
-                self.owner_commitment,
-                self.value_commitment,
-                self.nonce,
-                payload_hash,
-            ],
+        compute_note_commitment(
+            self.asset_id,
+            self.owner_commitment,
+            self.value_commitment,
+            self.nonce,
+            encrypted_payload_hash(&self.encrypted_payload),
         )
     }
 
@@ -1308,6 +1303,60 @@ pub fn derive_asset_id(
     hash_bytes(&bytes)
 }
 
+/// Computes a circuit-friendly owner commitment from a private spend secret.
+pub fn compute_owner_commitment(spend_secret: BlsScalar) -> BlsScalar {
+    hash_scalars(b"DRC20Phoenix.owner_commitment.v1", &[spend_secret])
+}
+
+/// Computes a circuit-friendly private value commitment.
+pub fn compute_value_commitment(
+    asset_id: BlsScalar,
+    value: u64,
+    value_blinder: BlsScalar,
+) -> BlsScalar {
+    hash_scalars(
+        b"DRC20Phoenix.value_commitment.v1",
+        &[asset_id, BlsScalar::from(value), value_blinder],
+    )
+}
+
+/// Computes the hash of an encrypted note payload.
+pub fn encrypted_payload_hash(payload: &[u8]) -> BlsScalar {
+    hash_bytes_with_domain(b"DRC20Phoenix.note.payload", payload)
+}
+
+/// Computes a circuit-friendly private note commitment.
+pub fn compute_note_commitment(
+    asset_id: BlsScalar,
+    owner_commitment: BlsScalar,
+    value_commitment: BlsScalar,
+    nonce: BlsScalar,
+    payload_hash: BlsScalar,
+) -> BlsScalar {
+    hash_scalars(
+        b"DRC20Phoenix.note.v1",
+        &[
+            asset_id,
+            owner_commitment,
+            value_commitment,
+            nonce,
+            payload_hash,
+        ],
+    )
+}
+
+/// Computes a circuit-friendly nullifier for a spent note.
+pub fn compute_nullifier(
+    asset_id: BlsScalar,
+    spend_secret: BlsScalar,
+    note_commitment: BlsScalar,
+) -> BlsScalar {
+    hash_scalars(
+        b"DRC20Phoenix.nullifier.v1",
+        &[asset_id, spend_secret, note_commitment],
+    )
+}
+
 /// Builds a proof intent hash.
 pub fn intent_hash(intent: PrivateAssetIntent<'_>) -> BlsScalar {
     let mut scalars = Vec::with_capacity(
@@ -1366,13 +1415,21 @@ fn hash_bytes_with_domain(domain: &[u8], bytes: &[u8]) -> BlsScalar {
 }
 
 fn hash_scalars(domain: &[u8], scalars: &[BlsScalar]) -> BlsScalar {
-    let mut bytes = Vec::with_capacity(domain.len() + 8 + scalars.len() * 32);
-    bytes.extend_from_slice(domain);
-    bytes.extend_from_slice(&(scalars.len() as u64).to_be_bytes());
-    for scalar in scalars {
-        bytes.extend_from_slice(&scalar.to_bytes());
-    }
-    hash_bytes(&bytes)
+    let mut input = Vec::with_capacity(scalars.len() + 2);
+    input.push(domain_scalar(domain));
+    input.push(BlsScalar::from(scalars.len() as u64));
+    input.extend_from_slice(scalars);
+    poseidon_hash(input)
+}
+
+#[cfg(all(target_family = "wasm", feature = "contract"))]
+fn poseidon_hash(scalars: Vec<BlsScalar>) -> BlsScalar {
+    dusk_core::abi::poseidon_hash(scalars)
+}
+
+#[cfg(not(all(target_family = "wasm", feature = "contract")))]
+fn poseidon_hash(scalars: Vec<BlsScalar>) -> BlsScalar {
+    PoseidonHash::digest(Domain::Other, &scalars)[0]
 }
 
 fn push_u128(out: &mut Vec<BlsScalar>, value: u128) {

@@ -53,10 +53,14 @@ Implementation status on this branch:
   satisfy.
 - `standards/examples/drc20_phoenix` adds a Forge reference wrapper and
   data-driver build target around the standards primitive.
+- `standards/drc20-phoenix-circuits` adds the first dedicated fixed-arity
+  private-asset circuit package. It proves Poseidon note commitments,
+  nullifiers, Merkle inclusion, range checks, and value conservation using the
+  same public-input ordering as the standards primitive.
 - `scripts/drc20-phoenix-local-rusk-private-smoke.sh` adds a fail-closed local
   `rusk-private` preflight. It builds the standards crate, Forge reference, and
-  client flow, but refuses RPC submission until real private-asset verifier data
-  is available.
+  client flow, and runs the circuit proof tests, but refuses RPC submission
+  until audited private-asset verifier data is supplied.
 
 ## Relationship To `genesis/transfer`
 

@@ -7,6 +7,7 @@ Status: implementation review for `standards/drc20-phoenix-architecture`.
 - `Drc20Phoenix` standards primitive.
 - Forge reference contract wrapper.
 - Public-input builder and client-flow example.
+- Dedicated fixed-arity DRC20Phoenix circuit package.
 - Local `rusk-private` smoke preflight.
 
 ## Findings And Resolutions
@@ -18,9 +19,12 @@ and rejects any mismatch. Public inputs include version, chain id, contract id,
 asset id, mode, root, nullifiers, output commitments, public mint amount,
 public burn amount, and intent hash.
 
-Residual risk: the final private-asset circuit does not exist on this branch.
-The implementation cannot be called production cryptographic enforcement until
-the prover/verifier package uses exactly the same public-input ordering.
+The first fixed-arity private-asset circuit exists on this branch and consumes
+the same standards public-input ordering. Proof tests cover mint and transfer
+verification plus public-input mutation rejection.
+
+Residual risk: the circuit needs external cryptographic audit and production
+verifier-data artifacts for the selected arities before deployment.
 
 ### Verifier-Data Packaging
 
@@ -29,8 +33,8 @@ hash for clients. The production path calls `abi::verify_plonk` in contract
 builds.
 
 Residual risk: verifier data is admin-supplied at initialization. A production
-reference should pin an audited verifier-data hash or move verifier updates
-behind a timelocked/multisig governance flow.
+reference should pin audited verifier-data hashes for each supported arity or
+move verifier updates behind a timelocked/multisig governance flow.
 
 ### Verifier Misuse
 
@@ -64,8 +68,8 @@ contract id, asset id, and circuit mode.
 Minting requires admin authorization, checked arithmetic, cap enforcement, and
 proof public-input equality before mutation.
 
-Residual risk: output value conservation is only enforceable once the final
-private-asset circuit exists.
+The circuit proves value conservation for the supported fixed arity. Residual
+risk remains around selecting and pinning audited production verifier data.
 
 ### Burn Accounting
 
@@ -73,8 +77,8 @@ Burning requires a retained root, unspent nullifiers, checked burned-supply
 arithmetic, and proof public-input equality. Full burns with no change notes are
 allowed.
 
-Residual risk: `sum(inputs) = sum(outputs) + public_burn` must be enforced by
-the final circuit.
+The circuit enforces `sum(inputs) + public_mint = sum(outputs) + public_burn`
+for the supported fixed arity.
 
 ### Malformed Notes
 
@@ -97,8 +101,8 @@ or roots.
 Root retention is bounded. Sync APIs are paginated. Notes/nullifiers are
 append-only and permanent.
 
-Residual risk: the final Forge reference should set product limits for proof
-size, memo size, max inputs, and max outputs once circuit arities are fixed.
+Residual risk: the Forge reference should set product limits for proof size,
+memo size, max inputs, and max outputs once final production arities are chosen.
 
 ### Wallet Scanning Privacy
 
@@ -118,6 +122,7 @@ Pause blocks mint, transfer, and burn. Queries remain available.
 ## Conclusion
 
 The standards-layer state machine is hardened against ordinary state-machine
-and replay bugs. The remaining blocker is cryptographic, not structural: the
-branch still needs a custom private-asset circuit/prover/verifier package before
-RPC-level mint/transfer/burn can be production-valid.
+and replay bugs, and the branch now includes a first custom private-asset
+circuit package. The remaining blocker is productionization: audited verifier
+data, arity selection/dispatch, wallet proving integration, and local-node RPC
+deployment with those artifacts.

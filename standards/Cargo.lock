@@ -820,6 +820,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "drc20-phoenix-circuits"
+version = "0.1.0"
+dependencies = [
+ "dusk-contract-standards",
+ "dusk-core",
+ "dusk-plonk",
+ "dusk-poseidon",
+ "rand 0.8.6",
+ "thiserror",
+]
+
+[[package]]
 name = "drc20-phoenix-reference"
 version = "0.1.0"
 dependencies = [
@@ -837,6 +849,7 @@ checksum = "633aa835dd9e4db7ad5dc94a3f95d44ff5c6856ec3c83c15eb75366cfb5ee68a"
 dependencies = [
  "blake2b_simd",
  "bytecheck",
+ "byteorder",
  "digest 0.9.0",
  "dusk-bytes",
  "ff",
@@ -844,6 +857,7 @@ dependencies = [
  "hex",
  "pairing",
  "rand_core 0.6.4",
+ "rayon",
  "rkyv",
  "serde",
  "subtle",
@@ -867,6 +881,7 @@ dependencies = [
  "dusk-core",
  "dusk-data-driver",
  "dusk-forge",
+ "dusk-poseidon",
  "dusk-vm",
  "proptest",
  "rand 0.8.6",
@@ -997,6 +1012,7 @@ dependencies = [
  "miniz_oxide",
  "msgpacker",
  "rand_core 0.6.4",
+ "rayon",
  "rkyv",
  "sha2 0.10.9",
  "zeroize",
@@ -1191,6 +1207,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
+ "bitvec",
  "rand_core 0.6.4",
  "subtle",
 ]

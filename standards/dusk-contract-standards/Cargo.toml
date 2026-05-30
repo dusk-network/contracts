@@ -9,6 +9,7 @@ crate-type = ["rlib"]
 [dependencies]
 dusk-core = { version = "=1.6.0", default-features = false }
 dusk-forge = "=0.3.0"
+dusk-poseidon = { workspace = true, default-features = false }
 bytecheck = { workspace = true }
 rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
 serde = { version = "1", default-features = false, features = [

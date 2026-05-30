@@ -17,6 +17,12 @@ The Forge reference contract lives in:
 standards/examples/drc20_phoenix
 ```
 
+The first dedicated circuit package lives in:
+
+```text
+standards/drc20-phoenix-circuits
+```
+
 ## Non-Goals
 
 `DRC20Phoenix` deliberately does not provide:
@@ -141,12 +147,11 @@ permissive verifier must not accidentally ship. Unit tests use a private
 `#[cfg(test)]` verifier that accepts only deterministic test proofs derived from
 the exact public inputs.
 
-The current branch does not include the final custom private-asset circuit or
-prover keys. A production deployment requires verifier data for a circuit that
-proves:
+The current branch includes a first fixed-arity custom private-asset circuit
+package. It proves:
 
 - input note inclusion under the supplied root
-- note ownership/spend authorization
+- note ownership through a private spend secret and owner commitment
 - nullifier correctness
 - output note correctness
 - asset/domain correctness
@@ -156,6 +161,10 @@ proves:
 sum(inputs) + public_mint = sum(outputs) + public_burn
 ```
 
+The circuit uses Poseidon-compatible note commitments, nullifiers, Merkle
+nodes, range checks, and standards public-input ordering. It is deliberately a
+custom DRC20Phoenix circuit and not the native DUSK Phoenix `TxCircuit`.
+
 The available upstream `phoenix-circuits` package was reviewed and remains the
 native DUSK `TxCircuit` family. It binds gas/deposit/refund semantics and does
 not expose a custom-asset proof statement with `asset_id` and token contract
@@ -163,8 +172,9 @@ domain. It is therefore intentionally not wired as the DRC20Phoenix production
 circuit.
 
 The current implementation provides the strict contract-side verifier boundary,
-the public-input builder, and the Forge reference wrapper. It does not include a
-permissive production fallback.
+the public-input builder, the Forge reference wrapper, and fixed-arity proof
+tests. It does not include audited production verifier-data artifacts or a full
+wallet SDK yet. It does not include a permissive production fallback.
 
 ## Forge Reference Contract
 
@@ -219,8 +229,8 @@ cargo run -p dusk-contract-standards --example build_drc20_phoenix_flow
 ```
 
 constructs mint, transfer, and burn call payloads with domain-bound public
-inputs. It deliberately uses placeholder proof bytes because the final
-private-asset prover package is not present on this branch.
+inputs. It still uses placeholder proof bytes for the generic call example;
+proof generation is covered in the dedicated `drc20-phoenix-circuits` crate.
 
 ## Mint Flow
 
@@ -320,8 +330,7 @@ The implementation checks:
 
 Remaining production requirements:
 
-- final private-asset circuit
-- audited prover/verifier data
+- audited prover/verifier data artifacts for the chosen arities
 - verifier-data packaging policy
 - wallet SDK and scanning database
 - local-node/RPC wallet-flow tests
@@ -355,6 +364,8 @@ Observed local status on this branch:
 
 - the standards tests, Forge contract build, data-driver build, and client
   payload builder run successfully inside the smoke script
+- the dedicated DRC20Phoenix circuit proof tests run successfully inside the
+  smoke script
 - when forced past the circuit guard with placeholder verifier data, local
   `rusk-private` startup reached VM/HTTP configuration but terminated before
   endpoint readiness because `DUSK_CONSENSUS_KEYS_PASS` was not set

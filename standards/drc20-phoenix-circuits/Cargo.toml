@@ -1,0 +1,17 @@
+[package]
+name = "drc20-phoenix-circuits"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dusk-contract-standards = { path = "../dusk-contract-standards" }
+dusk-core = { workspace = true, default-features = false }
+dusk-plonk = { workspace = true, features = ["alloc"] }
+dusk-poseidon = { workspace = true, default-features = false, features = [
+    "zk",
+] }
+rand = { workspace = true, features = ["std_rng"] }
+thiserror = { version = "1", default-features = false }
+
+[dev-dependencies]
+rand = { workspace = true, features = ["std_rng"] }

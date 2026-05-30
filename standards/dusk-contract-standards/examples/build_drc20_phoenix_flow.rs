@@ -5,9 +5,10 @@
 // Copyright (c) DUSK NETWORK. All rights reserved.
 
 use dusk_contract_standards::token::drc20_phoenix::{
-    Drc20Phoenix, Init, PrivateAssetCircuitMode, PrivateAssetNote,
-    PrivateAssetProof, PrivateAssetPublicInputBuilder, PrivateBurn,
-    PrivateMint, PrivateTransfer, TokenMetadata,
+    compute_owner_commitment, compute_value_commitment, Drc20Phoenix, Init,
+    PrivateAssetCircuitMode, PrivateAssetNote, PrivateAssetProof,
+    PrivateAssetPublicInputBuilder, PrivateBurn, PrivateMint, PrivateTransfer,
+    TokenMetadata,
 };
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
@@ -132,10 +133,12 @@ fn main() {
 }
 
 fn note(asset_id: BlsScalar, seed: u64) -> PrivateAssetNote {
+    let spend_secret = scalar(seed + 100);
+    let value_blinder = scalar(seed + 200);
     PrivateAssetNote::new(
         asset_id,
-        scalar(seed + 10),
-        scalar(seed + 20),
+        compute_owner_commitment(spend_secret),
+        compute_value_commitment(asset_id, seed, value_blinder),
         scalar(seed + 30),
         vec![seed as u8, seed.wrapping_add(1) as u8],
     )

@@ -56,6 +56,7 @@ echo "==> Building DRC20Phoenix standards, Forge contract, data-driver, and clie
     cd "${STANDARDS_DIR}"
     cargo test -p dusk-contract-standards
     cargo test -p dusk-contract-standards --features serde
+    cargo test -p drc20-phoenix-circuits
     cargo run -p dusk-contract-standards --example build_drc20_phoenix_flow
     cargo build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features contract
     cp target/wasm32-unknown-unknown/release/drc20_phoenix_reference.wasm \
@@ -76,15 +77,17 @@ require_cmd "${RUSK_WALLET_BIN}"
 if [ "${DRC20_PHOENIX_REAL_CIRCUIT:-0}" != "1" ]; then
     cat >&2 <<'EOF'
 DRC20Phoenix local-node validation is blocked before RPC submission:
-  DRC20_PHOENIX_REAL_CIRCUIT=1 is not set, and this branch does not yet contain
-  production private-asset prover/verifier data for mint/transfer/burn.
+  DRC20_PHOENIX_REAL_CIRCUIT=1 is not set. This branch contains the first
+  dedicated private-asset circuit package and proof tests, but it does not yet
+  include audited verifier-data artifacts and wallet RPC transaction builders
+  for mint/transfer/burn.
 
-The contract and data-driver were built successfully. Re-run this script with:
+The circuits, contract, and data-driver were built successfully. Re-run this script with:
   DRC20_PHOENIX_REAL_CIRCUIT=1
   DRC20_PHOENIX_VERIFIER_DATA=/path/to/private-asset.vd
   RUSK_PRIVATE_BIN=/path/to/rusk
   RUSK_WALLET_BIN=/path/to/rusk-wallet
-once the circuit package is available.
+once audited verifier data and RPC transaction builders are available.
 EOF
     exit 2
 fi
