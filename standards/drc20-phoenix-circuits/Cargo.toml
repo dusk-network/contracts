@@ -5,11 +5,13 @@ edition = "2021"
 
 [dependencies]
 dusk-contract-standards = { path = "../dusk-contract-standards" }
+dusk-bytes = { workspace = true }
 dusk-core = { workspace = true, default-features = false }
 dusk-plonk = { workspace = true, features = ["alloc"] }
 dusk-poseidon = { workspace = true, default-features = false, features = [
     "zk",
 ] }
+rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
 rand = { workspace = true, features = ["std_rng"] }
 thiserror = { version = "1", default-features = false }
 

@@ -9,6 +9,7 @@ resolver = "2"
 
 [workspace.dependencies]
 dusk-core = { version = "=1.6.0", default-features = false }
+dusk-bytes = "0.1.7"
 dusk-data-driver = "=0.3.2-alpha.1"
 dusk-forge = "=0.3.0"
 dusk-poseidon = { version = "=0.42.0-rc.0", default-features = false }

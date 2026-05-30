@@ -28,6 +28,11 @@ use rkyv::{Archive, Deserialize, Serialize};
 pub const DRC20_PHOENIX_VERSION: u32 = 1;
 
 const ROOT_WINDOW_DEFAULT: usize = 64;
+/// Fixed Merkle tree height used by the first development verifier artifacts.
+///
+/// Production deployments should replace the development verifier artifacts
+/// with audited artifacts for the chosen tree height before mainnet use.
+pub const DRC20_PHOENIX_TREE_HEIGHT: usize = 4;
 
 /// V1 proof arity: public mint with one private output.
 pub const V1_MINT_0_1: PrivateAssetVerifierKey =
@@ -1126,6 +1131,7 @@ impl Drc20Phoenix {
         }
         self.assert_call_domain(mint.chain_id, mint.contract_id, mint.asset_id);
         self.assert_notes_well_formed(&mint.outputs);
+        self.assert_note_capacity(mint.outputs.len());
         let next_supply = self
             .minted_supply
             .checked_add(mint.amount)
@@ -1167,6 +1173,7 @@ impl Drc20Phoenix {
         self.assert_call_domain(tx.chain_id, tx.contract_id, tx.asset_id);
         self.assert_retained_root(tx.root);
         self.assert_notes_well_formed(&tx.outputs);
+        self.assert_note_capacity(tx.outputs.len());
         self.assert_nullifiers_unspent(&tx.nullifiers);
 
         let expected = self.public_inputs(PublicInputContext {
@@ -1205,6 +1212,7 @@ impl Drc20Phoenix {
         self.assert_call_domain(burn.chain_id, burn.contract_id, burn.asset_id);
         self.assert_retained_root(burn.root);
         self.assert_notes_well_formed_allow_empty(&burn.outputs);
+        self.assert_note_capacity(burn.outputs.len());
         self.assert_nullifiers_unspent(&burn.nullifiers);
         let next_burned = self
             .burned_supply
@@ -1381,6 +1389,13 @@ impl Drc20Phoenix {
         }
     }
 
+    fn assert_note_capacity(&self, additional_notes: usize) {
+        let capacity = 1usize << DRC20_PHOENIX_TREE_HEIGHT;
+        if self.tree.leaves.len().saturating_add(additional_notes) > capacity {
+            panic!("{}", error::INVALID_VALUE);
+        }
+    }
+
     fn consume_nullifiers(&mut self, nullifiers: &[BlsScalar]) {
         for nullifier in nullifiers {
             if !self.nullifier_set.insert(*nullifier) {
@@ -1444,18 +1459,22 @@ impl PrivateNoteTree {
         let pos_usize = pos as usize;
         let leaf = self.leaves.get(pos_usize)?;
         let mut index = pos_usize;
+        let capacity = 1usize << DRC20_PHOENIX_TREE_HEIGHT;
         let mut level = self
             .leaves
             .iter()
             .map(|leaf| leaf.note.commitment)
             .collect::<Vec<_>>();
+        if level.len() > capacity {
+            return None;
+        }
+        level.resize(capacity, empty_leaf());
         let mut siblings = Vec::new();
 
-        while level.len() > 1 {
+        for _ in 0..DRC20_PHOENIX_TREE_HEIGHT {
             let is_right = index % 2 == 1;
             let sibling_index = if is_right { index - 1 } else { index + 1 };
-            let sibling_hash =
-                level.get(sibling_index).copied().unwrap_or(level[index]);
+            let sibling_hash = level[sibling_index];
             siblings.push(MerkleSibling {
                 hash: sibling_hash,
                 is_left: is_right,
@@ -1643,14 +1662,16 @@ pub fn intent_hash(intent: PrivateAssetIntent<'_>) -> BlsScalar {
 
 fn merkle_root(commitments: impl IntoIterator<Item = BlsScalar>) -> BlsScalar {
     let mut level = commitments.into_iter().collect::<Vec<_>>();
-    if level.is_empty() {
-        return domain_scalar(b"DRC20Phoenix.empty_root.v1");
+    let capacity = 1usize << DRC20_PHOENIX_TREE_HEIGHT;
+    if level.len() > capacity {
+        panic!("{}", error::INVALID_VALUE);
     }
-    while level.len() > 1 {
+    level.resize(capacity, empty_leaf());
+    for _ in 0..DRC20_PHOENIX_TREE_HEIGHT {
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
             let left = pair[0];
-            let right = pair.get(1).copied().unwrap_or(left);
+            let right = pair[1];
             next.push(hash_pair(left, right));
         }
         level = next;
@@ -1660,6 +1681,10 @@ fn merkle_root(commitments: impl IntoIterator<Item = BlsScalar>) -> BlsScalar {
 
 fn hash_pair(left: BlsScalar, right: BlsScalar) -> BlsScalar {
     hash_scalars(b"DRC20Phoenix.merkle_pair.v1", &[left, right])
+}
+
+fn empty_leaf() -> BlsScalar {
+    domain_scalar(b"DRC20Phoenix.empty_leaf.v1")
 }
 
 fn domain_scalar(domain: &[u8]) -> BlsScalar {
@@ -2444,8 +2469,8 @@ mod tests {
     proptest! {
         #[test]
         fn supply_note_and_nullifier_invariants_hold(
-            mint_amounts in proptest::collection::vec(1u64..1000, 1..16),
-            burn_amounts in proptest::collection::vec(1u64..500, 0..8),
+            mint_amounts in proptest::collection::vec(1u64..1000, 1..8),
+            burn_amounts in proptest::collection::vec(1u64..500, 0..4),
         ) {
             let mut token = token(None);
             let mut expected_unspent_private_value = 0u128;

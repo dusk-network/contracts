@@ -823,11 +823,13 @@ dependencies = [
 name = "drc20-phoenix-circuits"
 version = "0.1.0"
 dependencies = [
+ "dusk-bytes",
  "dusk-contract-standards",
  "dusk-core",
  "dusk-plonk",
  "dusk-poseidon",
  "rand 0.8.6",
+ "rkyv",
  "thiserror",
 ]
 

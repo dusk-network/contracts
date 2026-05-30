@@ -14,7 +14,7 @@ use dusk_contract_standards::token::drc20_phoenix::{
     compute_note_commitment, compute_nullifier, compute_value_commitment,
     verifier_data_hash_for_key, PrivateAssetCircuitMode,
     PrivateAssetPublicInputs, PrivateAssetVerifierConfig,
-    PrivateAssetVerifierKey,
+    PrivateAssetVerifierKey, DRC20_PHOENIX_TREE_HEIGHT,
 };
 use dusk_plonk::prelude::{
     BlsScalar, Circuit, Compiler, Composer, Constraint, Error as PlonkError,
@@ -31,7 +31,7 @@ pub const TRANSCRIPT_LABEL: &[u8] = b"DRC20Phoenix.private_asset.v1";
 ///
 /// Production deployments should pin the audited height and CRS in their
 /// verifier manifest. The small default keeps native proof tests tractable.
-pub const DEV_ARTIFACT_TREE_HEIGHT: usize = 2;
+pub const DEV_ARTIFACT_TREE_HEIGHT: usize = DRC20_PHOENIX_TREE_HEIGHT;
 
 /// Metadata for one supported fixed-arity circuit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -565,7 +565,7 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
-    const HEIGHT: usize = 2;
+    const HEIGHT: usize = DEV_ARTIFACT_TREE_HEIGHT;
 
     #[test]
     fn native_helpers_match_standards_helpers() {
@@ -697,10 +697,16 @@ mod tests {
         );
         let sibling_0 = BlsScalar::from(20);
         let sibling_1 = BlsScalar::from(21);
+        let sibling_2 = BlsScalar::from(22);
+        let sibling_3 = BlsScalar::from(23);
         let root_0 =
             poseidon(b"DRC20Phoenix.merkle_pair.v1", &[leaf, sibling_0]);
-        let root =
+        let root_1 =
             poseidon(b"DRC20Phoenix.merkle_pair.v1", &[sibling_1, root_0]);
+        let root_2 =
+            poseidon(b"DRC20Phoenix.merkle_pair.v1", &[root_1, sibling_2]);
+        let root =
+            poseidon(b"DRC20Phoenix.merkle_pair.v1", &[sibling_3, root_2]);
         let nf = nullifier(asset_id, spend_secret, leaf);
 
         let out_owner = BlsScalar::from(101);
@@ -731,8 +737,13 @@ mod tests {
                 value_blinder,
                 nonce,
                 payload_hash,
-                path: [sibling_0, sibling_1],
-                path_is_left: [BlsScalar::zero(), BlsScalar::one()],
+                path: [sibling_0, sibling_1, sibling_2, sibling_3],
+                path_is_left: [
+                    BlsScalar::zero(),
+                    BlsScalar::one(),
+                    BlsScalar::zero(),
+                    BlsScalar::one(),
+                ],
             }],
             outputs: [OutputNoteWitness {
                 owner_commitment: out_owner,
