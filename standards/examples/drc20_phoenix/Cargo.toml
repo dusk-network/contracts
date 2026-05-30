@@ -1,0 +1,23 @@
+[package]
+name = "drc20-phoenix-reference"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dusk-contract-standards = { path = "../../dusk-contract-standards" }
+dusk-core = { version = "=1.6.0", default-features = false }
+dusk-data-driver = { version = "=0.3.2-alpha.1", optional = true }
+dusk-forge = "=0.3.0"
+
+[features]
+contract = ["dusk-core/abi-dlmalloc", "dusk-contract-standards/contract"]
+data-driver = [
+    "dep:dusk-data-driver",
+    "dusk-core/serde",
+    "dusk-contract-standards/serde",
+    "dusk-data-driver/wasm-export",
+]
+data-driver-js = ["data-driver", "dusk-data-driver/alloc"]

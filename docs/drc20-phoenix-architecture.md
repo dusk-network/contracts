@@ -51,9 +51,12 @@ Implementation status on this branch:
 - This branch does not include the final custom private-asset circuit/prover.
   It defines the public-input and verifier boundary that the circuit must
   satisfy.
-- This branch does not add a Forge reference contract because it is based on
-  the current `origin/main` standards skeleton, not the larger stacked standards
-  branch that contains Forge examples and access-control helpers.
+- `standards/examples/drc20_phoenix` adds a Forge reference wrapper and
+  data-driver build target around the standards primitive.
+- `scripts/drc20-phoenix-local-rusk-private-smoke.sh` adds a fail-closed local
+  `rusk-private` preflight. It builds the standards crate, Forge reference, and
+  client flow, but refuses RPC submission until real private-asset verifier data
+  is available.
 
 ## Relationship To `genesis/transfer`
 

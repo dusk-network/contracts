@@ -19,6 +19,7 @@ use alloc::vec::Vec;
 use bytecheck::CheckBytes;
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
+use dusk_forge::ContractEvent;
 use rkyv::{Archive, Deserialize, Serialize};
 
 /// Standard version bound into asset ids and proof intents.
@@ -434,6 +435,30 @@ struct PublicInputContext<'a> {
     memo_hash: BlsScalar,
 }
 
+/// Public-input builder used by clients and prover integrations.
+pub struct PrivateAssetPublicInputBuilder<'a> {
+    /// Chain id.
+    pub chain_id: u8,
+    /// Contract id.
+    pub contract_id: ContractId,
+    /// Asset id.
+    pub asset_id: BlsScalar,
+    /// Circuit mode.
+    pub mode: PrivateAssetCircuitMode,
+    /// Historical root.
+    pub root: BlsScalar,
+    /// Nullifiers.
+    pub nullifiers: &'a [BlsScalar],
+    /// Output notes.
+    pub outputs: &'a [PrivateAssetNote],
+    /// Public mint amount.
+    pub public_mint_amount: u128,
+    /// Public burn amount.
+    pub public_burn_amount: u128,
+    /// Memo hash.
+    pub memo_hash: BlsScalar,
+}
+
 /// Private mint call.
 #[derive(Archive, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -578,6 +603,26 @@ pub struct PausedEvent {
 pub struct UnpausedEvent {
     /// Admin that unpaused the token.
     pub admin: AdminId,
+}
+
+impl ContractEvent for PrivateMintEvent {
+    const TOPICS: &'static [&'static str] = &[PRIVATE_MINT_TOPIC];
+}
+
+impl ContractEvent for PrivateTransferEvent {
+    const TOPICS: &'static [&'static str] = &[PRIVATE_TRANSFER_TOPIC];
+}
+
+impl ContractEvent for PrivateBurnEvent {
+    const TOPICS: &'static [&'static str] = &[PRIVATE_BURN_TOPIC];
+}
+
+impl ContractEvent for PausedEvent {
+    const TOPICS: &'static [&'static str] = &[PAUSED_TOPIC];
+}
+
+impl ContractEvent for UnpausedEvent {
+    const TOPICS: &'static [&'static str] = &[UNPAUSED_TOPIC];
 }
 
 /// Verifier boundary for private asset proofs.
@@ -861,6 +906,29 @@ impl Drc20Phoenix {
     /// Burns private notes using the production verifier.
     pub fn burn_private(&mut self, burn: PrivateBurn) -> PrivateBurnEvent {
         self.burn_private_with_verifier(burn, &ProductionVerifier)
+    }
+
+    /// Builds proof public inputs for this token domain.
+    pub fn build_public_inputs(
+        &self,
+        input: PrivateAssetPublicInputBuilder,
+    ) -> PrivateAssetPublicInputs {
+        self.assert_initialized();
+        if input.chain_id != self.chain_id
+            || input.contract_id != self.contract_id
+            || input.asset_id != self.asset_id
+        {
+            panic!("{}", error::INVALID_DOMAIN);
+        }
+        self.public_inputs(PublicInputContext {
+            mode: input.mode,
+            root: input.root,
+            nullifiers: input.nullifiers,
+            outputs: input.outputs,
+            public_mint_amount: input.public_mint_amount,
+            public_burn_amount: input.public_burn_amount,
+            memo_hash: input.memo_hash,
+        })
     }
 
     /// Mints private notes using an explicit verifier.
@@ -1540,6 +1608,50 @@ mod tests {
             token.asset_id(),
             derive_asset_id(7, c(10), &metadata(), [3; 32])
         );
+    }
+
+    #[test]
+    fn public_input_builder_matches_internal_call_binding() {
+        let token = token(None);
+        let outputs =
+            vec![note(token.asset_id(), 1), note(token.asset_id(), 2)];
+        let external =
+            token.build_public_inputs(PrivateAssetPublicInputBuilder {
+                chain_id: 7,
+                contract_id: c(9),
+                asset_id: token.asset_id(),
+                mode: PrivateAssetCircuitMode::Transfer,
+                root: token.root(),
+                nullifiers: &[s(1), s(2)],
+                outputs: &outputs,
+                public_mint_amount: 0,
+                public_burn_amount: 0,
+                memo_hash: s(10),
+            });
+        let internal = token.public_inputs(PublicInputContext {
+            mode: PrivateAssetCircuitMode::Transfer,
+            root: token.root(),
+            nullifiers: &[s(1), s(2)],
+            outputs: &outputs,
+            public_mint_amount: 0,
+            public_burn_amount: 0,
+            memo_hash: s(10),
+        });
+        assert_eq!(external, internal);
+        assert_panics(|| {
+            token.build_public_inputs(PrivateAssetPublicInputBuilder {
+                chain_id: 8,
+                contract_id: c(9),
+                asset_id: token.asset_id(),
+                mode: PrivateAssetCircuitMode::Transfer,
+                root: token.root(),
+                nullifiers: &[s(1)],
+                outputs: &outputs,
+                public_mint_amount: 0,
+                public_burn_amount: 0,
+                memo_hash: s(10),
+            });
+        });
     }
 
     #[test]

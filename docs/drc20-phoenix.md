@@ -11,6 +11,12 @@ The implementation lives in:
 standards/dusk-contract-standards/src/token/drc20_phoenix
 ```
 
+The Forge reference contract lives in:
+
+```text
+standards/examples/drc20_phoenix
+```
+
 ## Non-Goals
 
 `DRC20Phoenix` deliberately does not provide:
@@ -150,6 +156,72 @@ proves:
 sum(inputs) + public_mint = sum(outputs) + public_burn
 ```
 
+The available upstream `phoenix-circuits` package was reviewed and remains the
+native DUSK `TxCircuit` family. It binds gas/deposit/refund semantics and does
+not expose a custom-asset proof statement with `asset_id` and token contract
+domain. It is therefore intentionally not wired as the DRC20Phoenix production
+circuit.
+
+The current implementation provides the strict contract-side verifier boundary,
+the public-input builder, and the Forge reference wrapper. It does not include a
+permissive production fallback.
+
+## Forge Reference Contract
+
+The Forge reference exposes:
+
+```text
+metadata
+name
+symbol
+decimals
+version
+asset_id
+root
+root_exists
+opening
+num_notes
+existing_nullifiers
+sync
+sync_nullifiers
+minted_supply
+burned_supply
+net_supply
+cap
+paused
+verifier_data_hash
+build_public_inputs
+mint_private
+transfer_private
+burn_private
+pause
+unpause
+```
+
+Build commands:
+
+```bash
+cd standards
+cargo build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features contract
+cargo build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features data-driver
+```
+
+The data-driver build is intended for client JSON encoding/decoding of contract
+calls, query outputs, and events.
+
+## Client Flow Example
+
+The example:
+
+```bash
+cd standards
+cargo run -p dusk-contract-standards --example build_drc20_phoenix_flow
+```
+
+constructs mint, transfer, and burn call payloads with domain-bound public
+inputs. It deliberately uses placeholder proof bytes because the final
+private-asset prover package is not present on this branch.
+
 ## Mint Flow
 
 `mint_private`:
@@ -254,3 +326,36 @@ Remaining production requirements:
 - wallet SDK and scanning database
 - local-node/RPC wallet-flow tests
 - external audit of cryptographic constraints and public-input ordering
+
+## Local `rusk-private` Smoke
+
+The smoke preflight is:
+
+```bash
+./scripts/drc20-phoenix-local-rusk-private-smoke.sh
+```
+
+It builds the standards crate, Forge reference contract, data-driver, and client
+payload example. The script then refuses to submit RPC transactions unless a
+real private-asset circuit package is supplied:
+
+```bash
+DRC20_PHOENIX_REAL_CIRCUIT=1 \
+DRC20_PHOENIX_VERIFIER_DATA=/path/to/private-asset.vd \
+RUSK_PRIVATE_BIN=/path/to/rusk \
+RUSK_WALLET_BIN=/path/to/rusk-wallet \
+./scripts/drc20-phoenix-local-rusk-private-smoke.sh
+```
+
+This fail-closed behavior is intentional. A local-node mint/transfer/burn smoke
+must not be made green by using a test verifier or the native DUSK Phoenix
+transaction circuit.
+
+Observed local status on this branch:
+
+- the standards tests, Forge contract build, data-driver build, and client
+  payload builder run successfully inside the smoke script
+- when forced past the circuit guard with placeholder verifier data, local
+  `rusk-private` startup reached VM/HTTP configuration but terminated before
+  endpoint readiness because `DUSK_CONSENSUS_KEYS_PASS` was not set
+  in the local node environment

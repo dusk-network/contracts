@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["rlib"]
 
 [dependencies]
-dusk-core = "=1.6.0"
+dusk-core = { version = "=1.6.0", default-features = false }
 dusk-forge = "=0.3.0"
 bytecheck = { workspace = true }
 rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
@@ -21,7 +21,7 @@ serde_with = { version = "=3.9.0", default-features = false, features = [
 time = { version = "=0.3.36", default-features = false, optional = true }
 
 [features]
-contract = []
+contract = ["dusk-core/abi-dlmalloc"]
 serde = ["dep:serde", "dep:serde_with", "dep:time", "dusk-core/serde"]
 
 [dev-dependencies]
