@@ -422,5 +422,8 @@ Observed local status on this branch:
 - the dedicated DRC20Phoenix circuit proof tests run successfully inside the
   smoke script
 - when forced past the RPC guard on `127.0.0.1:18080`, local `rusk-private`
-  started VM/HTTP configuration but terminated before endpoint readiness
-  because `DUSK_CONSENSUS_KEYS_PASS` was not set in the local node environment
+  starts successfully with the local example consensus-key password and the
+  HTTP endpoint becomes reachable
+- the remaining local-node blocker is the intentionally unscripted RPC
+  transaction-submission path for Forge mint/transfer/burn calls with real
+  DRC20Phoenix proofs
