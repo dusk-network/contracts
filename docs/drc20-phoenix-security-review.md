@@ -8,7 +8,8 @@ Status: implementation review for `standards/drc20-phoenix-architecture`.
 - Forge reference contract wrapper.
 - Public-input builder and client-flow example.
 - Dedicated fixed-arity DRC20Phoenix circuit package.
-- Local `rusk-private` smoke preflight.
+- Local `rusk-private` smoke with the Forge reference contract, matching
+  `rusk-wallet` 0.3.0 binary, and generated development verifier artifacts.
 
 ## Findings And Resolutions
 
@@ -139,6 +140,8 @@ Pause blocks mint, transfer, and burn. Queries remain available.
 The standards-layer state machine is hardened against ordinary state-machine
 and replay bugs, and the branch now includes a first custom private-asset
 circuit package, fixed v1 arities, verifier dispatch, and development verifier
-artifacts. The remaining blocker is productionization: external audit,
-production CRS/verifier artifacts, wallet proving integration, and local-node
-RPC deployment with real Forge calls.
+artifacts. The local-node smoke deploys the Forge reference and submits real
+mint, transfer, and burn proofs over RPC. The remaining blocker is
+productionization: external audit, production CRS/verifier artifacts, wallet SDK
+integration, indexer/privacy behavior, and broader RPC coverage beyond the
+reference smoke.

@@ -62,9 +62,11 @@ Implementation status on this branch:
   verifier manifest at initialization.
 - `scripts/drc20-phoenix-local-rusk-private-smoke.sh` adds a fail-closed local
   `rusk-private` preflight. It builds the standards crate, Forge reference, and
-  client flow, regenerates development verifier data, and runs the circuit
-  proof tests, but refuses RPC submission until wallet RPC transaction builders
-  submit real DRC20Phoenix proofs end to end.
+  client flow, regenerates development verifier data, runs the circuit proof
+  tests, and can submit a full local RPC flow when
+  `DRC20_PHOENIX_REAL_CIRCUIT=1` is set. The validated flow deploys the Forge
+  reference, mints private notes, rejects a mutated proof, transfers privately,
+  rejects replayed nullifiers, burns privately, and checks pause semantics.
 
 ## Relationship To `genesis/transfer`
 

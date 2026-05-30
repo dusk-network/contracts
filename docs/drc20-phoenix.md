@@ -385,7 +385,7 @@ Remaining production requirements:
 - external audit of the circuit and generated verifier-data manifest
 - production CRS/public-parameter pinning for the chosen arities
 - wallet SDK and scanning database
-- local-node/RPC wallet-flow tests
+- broader wallet SDK/indexer RPC tests beyond the reference smoke
 - external audit of cryptographic constraints and public-input ordering
 
 ## Local `rusk-private` Smoke
@@ -397,8 +397,8 @@ The smoke preflight is:
 ```
 
 It builds the standards crate, Forge reference contract, data-driver, circuit
-tests, development verifier manifest, and client payload example. The script
-then refuses to submit RPC transactions unless explicitly forced:
+tests, development verifier manifest, and client payload example. By default,
+the script refuses to submit RPC transactions unless explicitly forced:
 
 ```bash
 DRC20_PHOENIX_REAL_CIRCUIT=1 \
@@ -410,9 +410,7 @@ RUSK_WALLET_BIN=/path/to/rusk-wallet \
 
 This fail-closed behavior is intentional. A local-node mint/transfer/burn smoke
 must not be made green by using a test verifier or the native DUSK Phoenix
-transaction circuit. The remaining RPC work is to submit Forge calls with the
-generated DRC20Phoenix private-asset proofs and decode the resulting sync/event
-flow.
+transaction circuit.
 
 Observed local status on this branch:
 
@@ -421,9 +419,13 @@ Observed local status on this branch:
   script
 - the dedicated DRC20Phoenix circuit proof tests run successfully inside the
   smoke script
-- when forced past the RPC guard on `127.0.0.1:18080`, local `rusk-private`
-  starts successfully with the local example consensus-key password and the
-  HTTP endpoint becomes reachable
-- the remaining local-node blocker is the intentionally unscripted RPC
-  transaction-submission path for Forge mint/transfer/burn calls with real
-  DRC20Phoenix proofs
+- local `rusk-private` starts with `DUSK_CONSENSUS_KEYS_PASS=password` against
+  the example genesis state
+- the matching `rusk-wallet` 0.3.0 binary restores the local funded faucet
+  mnemonic in legacy mode
+- the Forge reference deploys over RPC with the generated verifier manifest
+- real private-asset proofs are submitted for mint, transfer, and burn
+- negative RPC calls reject a mutated transfer proof, replayed transfer
+  nullifiers, and mint while paused without changing the checked state
+- the smoke verifies note counts, minted supply, burned supply, net supply, and
+  pause state through contract queries
