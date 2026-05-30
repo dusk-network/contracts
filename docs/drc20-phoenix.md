@@ -172,9 +172,50 @@ domain. It is therefore intentionally not wired as the DRC20Phoenix production
 circuit.
 
 The current implementation provides the strict contract-side verifier boundary,
-the public-input builder, the Forge reference wrapper, and fixed-arity proof
-tests. It does not include audited production verifier-data artifacts or a full
-wallet SDK yet. It does not include a permissive production fallback.
+the public-input builder, the Forge reference wrapper, fixed-arity proof tests,
+and verifier dispatch by version/mode/input/output arity. The branch also
+contains generated development verifier-data artifacts and a manifest under:
+
+```text
+standards/drc20-phoenix-circuits/verifier-data/
+```
+
+These artifacts are pinned by hash and useful for integration work, but they
+are explicitly marked `development-generated`. They use deterministic
+development public parameters and still require audit and production CRS
+pinning before mainnet use. There is no permissive production fallback.
+
+## V1 Arity Matrix
+
+The v1 verifier set is deliberately small and fixed:
+
+```text
+mint:     0 inputs / 1 output
+mint:     0 inputs / 2 outputs
+transfer: 1 input  / 2 outputs
+transfer: 2 inputs / 2 outputs
+transfer: 3 inputs / 2 outputs
+transfer: 4 inputs / 2 outputs
+burn:     1..4 inputs / 0..2 outputs
+```
+
+Transfers always use two outputs in v1 so wallets can naturally represent a
+recipient note plus a change note. Burns allow zero change outputs for full
+burns and one or two change outputs for partial burns. Unsupported arities are
+rejected before any state mutation.
+
+Verifier entries are keyed by:
+
+```text
+version
+mode
+input_count
+output_count
+```
+
+`Init` requires a complete v1 verifier set with no duplicate keys. Each entry
+stores its verifier data and a pinned hash. Query APIs expose
+`verifier_manifest_hash` and `verifier_manifest`.
 
 ## Forge Reference Contract
 
@@ -200,6 +241,8 @@ net_supply
 cap
 paused
 verifier_data_hash
+verifier_manifest_hash
+verifier_manifest
 build_public_inputs
 mint_private
 transfer_private
@@ -231,6 +274,15 @@ cargo run -p dusk-contract-standards --example build_drc20_phoenix_flow
 constructs mint, transfer, and burn call payloads with domain-bound public
 inputs. It still uses placeholder proof bytes for the generic call example;
 proof generation is covered in the dedicated `drc20-phoenix-circuits` crate.
+
+Development verifier artifacts can be regenerated with:
+
+```bash
+cd standards
+cargo +nightly-2026-02-27 run -p drc20-phoenix-circuits \
+  --example generate_verifier_data -- \
+  drc20-phoenix-circuits/verifier-data
+```
 
 ## Mint Flow
 
@@ -330,8 +382,8 @@ The implementation checks:
 
 Remaining production requirements:
 
-- audited prover/verifier data artifacts for the chosen arities
-- verifier-data packaging policy
+- external audit of the circuit and generated verifier-data manifest
+- production CRS/public-parameter pinning for the chosen arities
 - wallet SDK and scanning database
 - local-node/RPC wallet-flow tests
 - external audit of cryptographic constraints and public-input ordering
@@ -344,13 +396,13 @@ The smoke preflight is:
 ./scripts/drc20-phoenix-local-rusk-private-smoke.sh
 ```
 
-It builds the standards crate, Forge reference contract, data-driver, and client
-payload example. The script then refuses to submit RPC transactions unless a
-real private-asset circuit package is supplied:
+It builds the standards crate, Forge reference contract, data-driver, circuit
+tests, development verifier manifest, and client payload example. The script
+then refuses to submit RPC transactions unless explicitly forced:
 
 ```bash
 DRC20_PHOENIX_REAL_CIRCUIT=1 \
-DRC20_PHOENIX_VERIFIER_DATA=/path/to/private-asset.vd \
+DRC20_PHOENIX_VERIFIER_DATA_DIR=/path/to/verifier-data \
 RUSK_PRIVATE_BIN=/path/to/rusk \
 RUSK_WALLET_BIN=/path/to/rusk-wallet \
 ./scripts/drc20-phoenix-local-rusk-private-smoke.sh
@@ -358,15 +410,17 @@ RUSK_WALLET_BIN=/path/to/rusk-wallet \
 
 This fail-closed behavior is intentional. A local-node mint/transfer/burn smoke
 must not be made green by using a test verifier or the native DUSK Phoenix
-transaction circuit.
+transaction circuit. The remaining RPC work is to submit Forge calls with the
+generated DRC20Phoenix private-asset proofs and decode the resulting sync/event
+flow.
 
 Observed local status on this branch:
 
-- the standards tests, Forge contract build, data-driver build, and client
-  payload builder run successfully inside the smoke script
+- the standards tests, Forge contract build, data-driver build, verifier-data
+  generation, and client payload builder run successfully inside the smoke
+  script
 - the dedicated DRC20Phoenix circuit proof tests run successfully inside the
   smoke script
-- when forced past the circuit guard with placeholder verifier data, local
-  `rusk-private` startup reached VM/HTTP configuration but terminated before
-  endpoint readiness because `DUSK_CONSENSUS_KEYS_PASS` was not set
-  in the local node environment
+- when forced past the RPC guard on `127.0.0.1:18080`, local `rusk-private`
+  started VM/HTTP configuration but terminated before endpoint readiness
+  because `DUSK_CONSENSUS_KEYS_PASS` was not set in the local node environment

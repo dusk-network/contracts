@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STANDARDS_DIR="${ROOT_DIR}/standards"
+CARGO_TOOLCHAIN="${CARGO_TOOLCHAIN:-nightly-2026-02-27}"
+VERIFIER_DATA_DIR="${DRC20_PHOENIX_VERIFIER_DATA_DIR:-${STANDARDS_DIR}/drc20-phoenix-circuits/verifier-data}"
 
 RUSK_PRIVATE_BIN="${RUSK_PRIVATE_BIN:-}"
 RUSK_WALLET_BIN="${RUSK_WALLET_BIN:-/home/hein_/projects/rusk-wallet}"
@@ -51,20 +53,47 @@ require_cmd() {
     fi
 }
 
+cargo_cmd() {
+    cargo +"${CARGO_TOOLCHAIN}" "$@"
+}
+
 echo "==> Building DRC20Phoenix standards, Forge contract, data-driver, and client flow"
-(
-    cd "${STANDARDS_DIR}"
-    cargo test -p dusk-contract-standards
-    cargo test -p dusk-contract-standards --features serde
-    cargo test -p drc20-phoenix-circuits
-    cargo run -p dusk-contract-standards --example build_drc20_phoenix_flow
-    cargo build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features contract
-    cp target/wasm32-unknown-unknown/release/drc20_phoenix_reference.wasm \
-        target/wasm32-unknown-unknown/release/drc20_phoenix_reference.contract.wasm
-    cargo build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features data-driver
-    cp target/wasm32-unknown-unknown/release/drc20_phoenix_reference.wasm \
-        target/wasm32-unknown-unknown/release/drc20_phoenix_reference.data-driver.wasm
-)
+if [ "${DRC20_PHOENIX_SKIP_BUILD:-0}" != "1" ]; then
+    (
+        cd "${STANDARDS_DIR}"
+        cargo_cmd test -p dusk-contract-standards
+        cargo_cmd test -p dusk-contract-standards --features serde
+        cargo_cmd test -p drc20-phoenix-circuits
+        cargo_cmd run -p drc20-phoenix-circuits --example generate_verifier_data -- "${VERIFIER_DATA_DIR}"
+        cargo_cmd run -p dusk-contract-standards --example build_drc20_phoenix_flow
+        cargo_cmd build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features contract
+        cp target/wasm32-unknown-unknown/release/drc20_phoenix_reference.wasm \
+            target/wasm32-unknown-unknown/release/drc20_phoenix_reference.contract.wasm
+        cargo_cmd build -p drc20-phoenix-reference --target wasm32-unknown-unknown --release --features data-driver
+        cp target/wasm32-unknown-unknown/release/drc20_phoenix_reference.wasm \
+            target/wasm32-unknown-unknown/release/drc20_phoenix_reference.data-driver.wasm
+    )
+else
+    echo "==> Skipping build preflight because DRC20_PHOENIX_SKIP_BUILD=1"
+fi
+
+if [ "${DRC20_PHOENIX_REAL_CIRCUIT:-0}" != "1" ]; then
+    cat >&2 <<'EOF'
+DRC20Phoenix local-node validation is blocked before RPC submission:
+  DRC20_PHOENIX_REAL_CIRCUIT=1 is not set. This branch generates a development
+  verifier-data manifest for the dedicated private-asset circuits, but the
+  local RPC flow is still fail-closed until wallet transaction builders submit
+  real mint/transfer/burn proofs end to end.
+
+The circuits, contract, and data-driver were built successfully. Re-run this script with:
+  DRC20_PHOENIX_REAL_CIRCUIT=1
+  DRC20_PHOENIX_VERIFIER_DATA_DIR=/path/to/verifier-data
+  RUSK_PRIVATE_BIN=/path/to/rusk
+  RUSK_WALLET_BIN=/path/to/rusk-wallet
+once RPC transaction builders are available.
+EOF
+    exit 2
+fi
 
 RUSK_PRIVATE_BIN="$(find_rusk || true)"
 if [ -z "${RUSK_PRIVATE_BIN}" ]; then
@@ -74,26 +103,8 @@ fi
 require_cmd "${RUSK_PRIVATE_BIN}"
 require_cmd "${RUSK_WALLET_BIN}"
 
-if [ "${DRC20_PHOENIX_REAL_CIRCUIT:-0}" != "1" ]; then
-    cat >&2 <<'EOF'
-DRC20Phoenix local-node validation is blocked before RPC submission:
-  DRC20_PHOENIX_REAL_CIRCUIT=1 is not set. This branch contains the first
-  dedicated private-asset circuit package and proof tests, but it does not yet
-  include audited verifier-data artifacts and wallet RPC transaction builders
-  for mint/transfer/burn.
-
-The circuits, contract, and data-driver were built successfully. Re-run this script with:
-  DRC20_PHOENIX_REAL_CIRCUIT=1
-  DRC20_PHOENIX_VERIFIER_DATA=/path/to/private-asset.vd
-  RUSK_PRIVATE_BIN=/path/to/rusk
-  RUSK_WALLET_BIN=/path/to/rusk-wallet
-once audited verifier data and RPC transaction builders are available.
-EOF
-    exit 2
-fi
-
-if [ -z "${DRC20_PHOENIX_VERIFIER_DATA:-}" ] || [ ! -f "${DRC20_PHOENIX_VERIFIER_DATA}" ]; then
-    echo "missing DRC20_PHOENIX_VERIFIER_DATA=/path/to/private-asset.vd" >&2
+if [ ! -f "${VERIFIER_DATA_DIR}/manifest.json" ]; then
+    echo "missing verifier manifest at ${VERIFIER_DATA_DIR}/manifest.json" >&2
     exit 2
 fi
 
@@ -127,8 +138,8 @@ fi
 
 cat >&2 <<'EOF'
 The node is reachable, but the transaction-submission portion is intentionally
-not scripted until the custom private-asset prover package defines the final
-proof bytes and verifier-data format. This avoids shipping an RPC smoke that
-uses a permissive or native-DUSK Phoenix proof by accident.
+not scripted until wallet RPC builders submit the generated DRC20Phoenix
+private-asset proofs to the Forge contract. This avoids shipping an RPC smoke
+that uses a permissive or native-DUSK Phoenix proof by accident.
 EOF
 exit 2

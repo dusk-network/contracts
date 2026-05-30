@@ -12,7 +12,9 @@
 
 use dusk_contract_standards::token::drc20_phoenix::{
     compute_note_commitment, compute_nullifier, compute_value_commitment,
-    PrivateAssetCircuitMode, PrivateAssetPublicInputs,
+    verifier_data_hash_for_key, PrivateAssetCircuitMode,
+    PrivateAssetPublicInputs, PrivateAssetVerifierConfig,
+    PrivateAssetVerifierKey,
 };
 use dusk_plonk::prelude::{
     BlsScalar, Circuit, Compiler, Composer, Constraint, Error as PlonkError,
@@ -24,6 +26,117 @@ use dusk_poseidon::{Domain, HashGadget};
 
 /// Transcript label for DRC20Phoenix circuits.
 pub const TRANSCRIPT_LABEL: &[u8] = b"DRC20Phoenix.private_asset.v1";
+
+/// V1 Merkle height used by the development verifier artifacts.
+///
+/// Production deployments should pin the audited height and CRS in their
+/// verifier manifest. The small default keeps native proof tests tractable.
+pub const DEV_ARTIFACT_TREE_HEIGHT: usize = 2;
+
+/// Metadata for one supported fixed-arity circuit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SupportedArity {
+    /// Verifier key.
+    pub key: PrivateAssetVerifierKey,
+    /// Flattened public input count.
+    pub public_input_count: usize,
+}
+
+/// V1 supported arities for verifier-data generation.
+pub const SUPPORTED_ARITIES: &[SupportedArity] = &[
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Mint, 0, 1),
+        public_input_count: public_input_count(0, 1),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Mint, 0, 2),
+        public_input_count: public_input_count(0, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(
+            PrivateAssetCircuitMode::Transfer,
+            1,
+            2,
+        ),
+        public_input_count: public_input_count(1, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(
+            PrivateAssetCircuitMode::Transfer,
+            2,
+            2,
+        ),
+        public_input_count: public_input_count(2, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(
+            PrivateAssetCircuitMode::Transfer,
+            3,
+            2,
+        ),
+        public_input_count: public_input_count(3, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(
+            PrivateAssetCircuitMode::Transfer,
+            4,
+            2,
+        ),
+        public_input_count: public_input_count(4, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 1, 0),
+        public_input_count: public_input_count(1, 0),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 1, 1),
+        public_input_count: public_input_count(1, 1),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 1, 2),
+        public_input_count: public_input_count(1, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 2, 0),
+        public_input_count: public_input_count(2, 0),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 2, 1),
+        public_input_count: public_input_count(2, 1),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 2, 2),
+        public_input_count: public_input_count(2, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 3, 0),
+        public_input_count: public_input_count(3, 0),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 3, 1),
+        public_input_count: public_input_count(3, 1),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 3, 2),
+        public_input_count: public_input_count(3, 2),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 4, 0),
+        public_input_count: public_input_count(4, 0),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 4, 1),
+        public_input_count: public_input_count(4, 1),
+    },
+    SupportedArity {
+        key: PrivateAssetVerifierKey::new(PrivateAssetCircuitMode::Burn, 4, 2),
+        public_input_count: public_input_count(4, 2),
+    },
+];
+
+const fn public_input_count(inputs: usize, outputs: usize) -> usize {
+    14 + inputs + outputs
+}
 
 /// Error returned by circuit helpers.
 #[derive(Debug, thiserror::Error)]
@@ -342,6 +455,18 @@ pub fn verifier_data(verifier: &Verifier) -> Vec<u8> {
     verifier.to_bytes()
 }
 
+/// Builds a standards verifier config from verifier bytes.
+pub fn verifier_config(
+    key: PrivateAssetVerifierKey,
+    verifier_data: Vec<u8>,
+) -> PrivateAssetVerifierConfig {
+    PrivateAssetVerifierConfig {
+        key,
+        verifier_data_hash: verifier_data_hash_for_key(key, &verifier_data),
+        verifier_data,
+    }
+}
+
 /// Native note commitment helper matching the circuit.
 pub fn note_commitment(
     asset_id: BlsScalar,
@@ -434,7 +559,7 @@ mod tests {
     use super::*;
     use dusk_contract_standards::token::drc20_phoenix::{
         compute_owner_commitment, intent_hash, PrivateAssetIntent,
-        PrivateAssetPublicInputs, DRC20_PHOENIX_VERSION,
+        PrivateAssetPublicInputs, DRC20_PHOENIX_VERSION, V1_SUPPORTED_ARITIES,
     };
     use dusk_core::abi::ContractId;
     use rand::rngs::StdRng;
@@ -488,6 +613,22 @@ mod tests {
         assert_eq!(fixed.scalars, inputs.to_scalars());
         assert_eq!(fixed.output_commitments, [output]);
         assert_eq!(fixed.public_mint_amount, 42);
+    }
+
+    #[test]
+    fn supported_arities_match_standards_manifest() {
+        let circuit_keys = SUPPORTED_ARITIES
+            .iter()
+            .map(|arity| arity.key)
+            .collect::<Vec<_>>();
+        assert_eq!(circuit_keys, V1_SUPPORTED_ARITIES);
+        for arity in SUPPORTED_ARITIES {
+            assert_eq!(
+                arity.public_input_count,
+                14 + arity.key.input_count as usize
+                    + arity.key.output_count as usize
+            );
+        }
     }
 
     #[test]

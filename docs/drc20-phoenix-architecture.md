@@ -48,19 +48,23 @@ Implementation status on this branch:
   in contract builds and rejects proofs in native non-contract builds. Native
   tests use a `#[cfg(test)]` verifier that cannot be imported by downstream
   contracts.
-- This branch does not include the final custom private-asset circuit/prover.
-  It defines the public-input and verifier boundary that the circuit must
-  satisfy.
+- This branch includes a first custom fixed-arity private-asset circuit package
+  and development-generated verifier-data artifacts. The circuit and artifacts
+  are not yet externally audited and are not mainnet-production CRS artifacts.
 - `standards/examples/drc20_phoenix` adds a Forge reference wrapper and
   data-driver build target around the standards primitive.
 - `standards/drc20-phoenix-circuits` adds the first dedicated fixed-arity
   private-asset circuit package. It proves Poseidon note commitments,
   nullifiers, Merkle inclusion, range checks, and value conservation using the
   same public-input ordering as the standards primitive.
+- The standards primitive now dispatches verifier data by
+  `(version, mode, input_count, output_count)` and requires a complete pinned v1
+  verifier manifest at initialization.
 - `scripts/drc20-phoenix-local-rusk-private-smoke.sh` adds a fail-closed local
   `rusk-private` preflight. It builds the standards crate, Forge reference, and
-  client flow, and runs the circuit proof tests, but refuses RPC submission
-  until audited private-asset verifier data is supplied.
+  client flow, regenerates development verifier data, and runs the circuit
+  proof tests, but refuses RPC submission until wallet RPC transaction builders
+  submit real DRC20Phoenix proofs end to end.
 
 ## Relationship To `genesis/transfer`
 
@@ -844,7 +848,7 @@ public input ordering
 circuit mode definitions
 event schema
 wallet sync requirements
-verifier-data packaging decision
+verifier-data manifest and hash-pinning policy
 ```
 
 ### Phase 1: Generic Contract Utilities
@@ -886,11 +890,12 @@ mint: 0 inputs, M outputs, public mint
 burn: 1..N inputs, M outputs, public burn
 ```
 
-Start with the same practical shape as native Phoenix:
+The branch now starts with a conservative fixed v1 matrix:
 
 ```text
-1..4 inputs
-2 outputs
+mint: 0 inputs / 1..2 outputs
+transfer: 1..4 inputs / 2 outputs
+burn: 1..4 inputs / 0..2 outputs
 ```
 
 Expand only when needed.
@@ -953,17 +958,19 @@ audit/viewing-key support
 
 ## Open Questions
 
-1. How should standards contracts package custom verifier data?
+1. Which production CRS/public parameters should be pinned for audited verifier
+   data?
 2. Should Phoenix core note primitives be extended with asset ids, or should
    `DRC20Phoenix` define `PrivateAssetNote` independently?
 3. What tree depth is required for popular custom fungible tokens?
-4. Should v1 keep native Phoenix's practical 1-to-4 input and 2-output shape?
+4. Should v1 transfer remain two-output only after wallet UX testing?
 5. Is public total minted/burned supply acceptable for v1?
 6. Should roots be retained by block window, note count, or fixed ring size?
 7. Should wallets derive per-asset viewing keys to reduce cross-asset
    correlation?
 8. What bridge semantics should be used for transparent DRC20 integration?
-9. Should verifier data be immutable in v1?
+9. Should verifier data stay immutable forever, or can a timelocked/multisig
+   migration flow replace it after audit?
 
 ## Final Recommendation
 

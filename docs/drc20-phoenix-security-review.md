@@ -23,18 +23,25 @@ The first fixed-arity private-asset circuit exists on this branch and consumes
 the same standards public-input ordering. Proof tests cover mint and transfer
 verification plus public-input mutation rejection.
 
-Residual risk: the circuit needs external cryptographic audit and production
-verifier-data artifacts for the selected arities before deployment.
+Residual risk: the circuit and public-input ordering need external
+cryptographic audit before deployment.
 
 ### Verifier-Data Packaging
 
-`Init` requires non-empty verifier data and the contract exposes a verifier-data
-hash for clients. The production path calls `abi::verify_plonk` in contract
-builds.
+`Init` now requires a complete v1 verifier set keyed by version, mode,
+input-count, and output-count. The primitive rejects missing entries,
+duplicates, unsupported arities, empty verifier data, and verifier-data hash
+mismatches. The production path selects verifier data by the call arity and
+calls `abi::verify_plonk` in contract builds.
 
-Residual risk: verifier data is admin-supplied at initialization. A production
-reference should pin audited verifier-data hashes for each supported arity or
-move verifier updates behind a timelocked/multisig governance flow.
+Development verifier artifacts and `manifest.json` are committed under
+`standards/drc20-phoenix-circuits/verifier-data/`. They are generated from
+deterministic development public parameters and are explicitly not final
+mainnet artifacts.
+
+Residual risk: production deployments need audited verifier-data artifacts and
+production CRS/public-parameter pinning. If verifier updates are ever allowed,
+they should go through timelocked/multisig governance.
 
 ### Verifier Misuse
 
@@ -68,8 +75,8 @@ contract id, asset id, and circuit mode.
 Minting requires admin authorization, checked arithmetic, cap enforcement, and
 proof public-input equality before mutation.
 
-The circuit proves value conservation for the supported fixed arity. Residual
-risk remains around selecting and pinning audited production verifier data.
+The circuit proves value conservation for the supported fixed arities. Residual
+risk remains around audit and production CRS pinning.
 
 ### Burn Accounting
 
@@ -101,8 +108,16 @@ or roots.
 Root retention is bounded. Sync APIs are paginated. Notes/nullifiers are
 append-only and permanent.
 
-Residual risk: the Forge reference should set product limits for proof size,
-memo size, max inputs, and max outputs once final production arities are chosen.
+The v1 arity matrix bounds proof input/output counts:
+
+```text
+mint: 0 inputs / 1..2 outputs
+transfer: 1..4 inputs / 2 outputs
+burn: 1..4 inputs / 0..2 outputs
+```
+
+Residual risk: the Forge reference should still set product limits for proof
+size and memo size.
 
 ### Wallet Scanning Privacy
 
@@ -123,6 +138,7 @@ Pause blocks mint, transfer, and burn. Queries remain available.
 
 The standards-layer state machine is hardened against ordinary state-machine
 and replay bugs, and the branch now includes a first custom private-asset
-circuit package. The remaining blocker is productionization: audited verifier
-data, arity selection/dispatch, wallet proving integration, and local-node RPC
-deployment with those artifacts.
+circuit package, fixed v1 arities, verifier dispatch, and development verifier
+artifacts. The remaining blocker is productionization: external audit,
+production CRS/verifier artifacts, wallet proving integration, and local-node
+RPC deployment with real Forge calls.
