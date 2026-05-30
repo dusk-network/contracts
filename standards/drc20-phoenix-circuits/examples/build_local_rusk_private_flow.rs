@@ -70,6 +70,10 @@ fn main() {
 fn build(args: &[String]) {
     let contract_id = parse_contract_id(args.get(2).expect("contract id hex"));
     let verifier_dir = Path::new(args.get(3).expect("verifier data dir"));
+    let chain_id = args
+        .get(4)
+        .map(|value| value.parse::<u8>().expect("u8 chain id"))
+        .unwrap_or(0);
     let verifier_set = verifier_set(verifier_dir);
 
     let mut token = Drc20Phoenix::new();
@@ -79,7 +83,7 @@ fn build(args: &[String]) {
             symbol: "pLOC".into(),
             decimals: 9,
         },
-        chain_id: 0,
+        chain_id,
         contract_id,
         deployment_salt: [9; 32],
         admin: ADMIN,
@@ -101,7 +105,7 @@ fn build(args: &[String]) {
         .collect::<Vec<_>>();
     let mint_inputs =
         token.build_public_inputs(PrivateAssetPublicInputBuilder {
-            chain_id: 0,
+            chain_id,
             contract_id,
             asset_id,
             mode: PrivateAssetCircuitMode::Mint,
@@ -115,7 +119,7 @@ fn build(args: &[String]) {
     let mint_proof = mint_proof(&pp, &mut rng, &mint_inputs, &mint_notes);
     let mint = PrivateMint {
         caller: ADMIN,
-        chain_id: 0,
+        chain_id,
         contract_id,
         asset_id,
         amount: 100,
@@ -140,7 +144,7 @@ fn build(args: &[String]) {
         );
     let transfer_inputs =
         token.build_public_inputs(PrivateAssetPublicInputBuilder {
-            chain_id: 0,
+            chain_id,
             contract_id,
             asset_id,
             mode: PrivateAssetCircuitMode::Transfer,
@@ -161,7 +165,7 @@ fn build(args: &[String]) {
         &transfer_notes,
     );
     let transfer = PrivateTransfer {
-        chain_id: 0,
+        chain_id,
         contract_id,
         asset_id,
         root: transfer_root,
@@ -187,7 +191,7 @@ fn build(args: &[String]) {
     let burn_outputs = Vec::new();
     let burn_inputs =
         token.build_public_inputs(PrivateAssetPublicInputBuilder {
-            chain_id: 0,
+            chain_id,
             contract_id,
             asset_id,
             mode: PrivateAssetCircuitMode::Burn,
@@ -207,7 +211,7 @@ fn build(args: &[String]) {
         &burn_opening,
     );
     let burn = PrivateBurn {
-        chain_id: 0,
+        chain_id,
         contract_id,
         asset_id,
         root: burn_root,
