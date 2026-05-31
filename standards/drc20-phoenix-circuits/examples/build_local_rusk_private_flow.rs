@@ -160,7 +160,7 @@ fn build(args: &[String]) {
             memo_hash: scalar(901),
         });
     let transfer_opening = token.opening(0).unwrap();
-    let transfer_proof = transfer_proof(
+    let initial_transfer_proof = transfer_proof(
         &pp,
         &mut rng,
         &transfer_inputs,
@@ -175,7 +175,7 @@ fn build(args: &[String]) {
         root: transfer_root,
         nullifiers: vec![transfer_nullifier],
         outputs: transfer_outputs,
-        proof: transfer_proof,
+        proof: initial_transfer_proof,
         memo_hash: scalar(901),
         block_height: 2,
     };
@@ -226,6 +226,100 @@ fn build(args: &[String]) {
         memo_hash: scalar(902),
         block_height: 3,
     };
+    token.burn_private_with_verifier(burn.clone(), &DevVerifier);
+
+    let extra_transfer_notes = [note(asset_id, 5, 15), note(asset_id, 6, 25)];
+    let extra_transfer_outputs = extra_transfer_notes
+        .iter()
+        .map(|witness| witness.note.clone())
+        .collect::<Vec<_>>();
+    let extra_transfer_root = token.root();
+    let extra_transfer_nullifier =
+        dusk_contract_standards::token::drc20_phoenix::compute_nullifier(
+            asset_id,
+            mint_notes[1].spend_secret,
+            mint_notes[1].note.commitment,
+        );
+    let extra_transfer_inputs =
+        token.build_public_inputs(PrivateAssetPublicInputBuilder {
+            chain_id,
+            contract_id,
+            asset_id,
+            mode: PrivateAssetCircuitMode::Transfer,
+            root: extra_transfer_root,
+            nullifiers: &[extra_transfer_nullifier],
+            outputs: &extra_transfer_outputs,
+            public_mint_amount: 0,
+            public_burn_amount: 0,
+            memo_hash: scalar(903),
+        });
+    let extra_transfer_opening = token.opening(1).unwrap();
+    let extra_transfer_proof = transfer_proof(
+        &pp,
+        &mut rng,
+        &extra_transfer_inputs,
+        &mint_notes[1],
+        &extra_transfer_opening,
+        &extra_transfer_notes,
+    );
+    let extra_transfer = PrivateTransfer {
+        chain_id,
+        contract_id,
+        asset_id,
+        root: extra_transfer_root,
+        nullifiers: vec![extra_transfer_nullifier],
+        outputs: extra_transfer_outputs,
+        proof: extra_transfer_proof,
+        memo_hash: scalar(903),
+        block_height: 4,
+    };
+    token.transfer_private_with_verifier(extra_transfer.clone(), &DevVerifier);
+
+    let second_extra_transfer_notes = [note(asset_id, 7, 10), note(asset_id, 8, 25)];
+    let second_extra_transfer_outputs = second_extra_transfer_notes
+        .iter()
+        .map(|witness| witness.note.clone())
+        .collect::<Vec<_>>();
+    let second_extra_transfer_root = token.root();
+    let second_extra_transfer_nullifier =
+        dusk_contract_standards::token::drc20_phoenix::compute_nullifier(
+            asset_id,
+            transfer_notes[1].spend_secret,
+            transfer_notes[1].note.commitment,
+        );
+    let second_extra_transfer_inputs =
+        token.build_public_inputs(PrivateAssetPublicInputBuilder {
+            chain_id,
+            contract_id,
+            asset_id,
+            mode: PrivateAssetCircuitMode::Transfer,
+            root: second_extra_transfer_root,
+            nullifiers: &[second_extra_transfer_nullifier],
+            outputs: &second_extra_transfer_outputs,
+            public_mint_amount: 0,
+            public_burn_amount: 0,
+            memo_hash: scalar(904),
+        });
+    let second_extra_transfer_opening = token.opening(3).unwrap();
+    let second_extra_transfer_proof = transfer_proof(
+        &pp,
+        &mut rng,
+        &second_extra_transfer_inputs,
+        &transfer_notes[1],
+        &second_extra_transfer_opening,
+        &second_extra_transfer_notes,
+    );
+    let second_extra_transfer = PrivateTransfer {
+        chain_id,
+        contract_id,
+        asset_id,
+        root: second_extra_transfer_root,
+        nullifiers: vec![second_extra_transfer_nullifier],
+        outputs: second_extra_transfer_outputs,
+        proof: second_extra_transfer_proof,
+        memo_hash: scalar(904),
+        block_height: 5,
+    };
 
     let pause_args = ADMIN;
     let unpause_args = ADMIN;
@@ -235,6 +329,11 @@ fn build(args: &[String]) {
     println!("bad_transfer_args={}", encode(&bad_transfer));
     println!("transfer_args={}", encode(&transfer));
     println!("burn_args={}", encode(&burn));
+    println!("extra_transfer_args={}", encode(&extra_transfer));
+    println!(
+        "second_extra_transfer_args={}",
+        encode(&second_extra_transfer)
+    );
     println!("pause_args={}", encode(&pause_args));
     println!("unpause_args={}", encode(&unpause_args));
     println!("expected_asset_id={}", hex(&asset_id.to_bytes()));
@@ -244,6 +343,8 @@ fn build(args: &[String]) {
     println!("expected_num_notes_after_mint=2");
     println!("expected_num_notes_after_transfer=4");
     println!("expected_num_notes_after_burn=4");
+    println!("expected_num_notes_after_extra_transfer=6");
+    println!("expected_num_notes_after_second_extra_transfer=8");
 }
 
 fn mint_proof(
