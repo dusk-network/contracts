@@ -329,10 +329,14 @@ if [ "${DRC20_PHOENIX_GENERATE_STATE:-1}" = "1" ]; then
     echo "==> Generating local genesis state"
     remove_target_path "${RUSK_STATE_PATH}"
     remove_target_path "${RUSK_DB_PATH}"
+    STATE_TMP="${ROOT_DIR}/target/drc20-phoenix-state-${RANDOM}-${RANDOM}.tmp"
+    remove_target_path "${STATE_TMP}"
     "${RUSK_PRIVATE_BIN}" recovery state \
         --force \
         --init "${RUSK_GENESIS_CONFIG}" \
-        -o "${RUSK_STATE_PATH}" >/dev/null
+        -o "${STATE_TMP}" >/dev/null
+    remove_target_path "${RUSK_STATE_PATH}"
+    mv "${STATE_TMP}" "${RUSK_STATE_PATH}"
 fi
 
 echo "==> Starting local rusk-private node"

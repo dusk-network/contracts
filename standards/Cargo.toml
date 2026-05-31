@@ -27,6 +27,7 @@ serde_json = { version = "1", default-features = false }
 serde_with = { version = "=3.9.0", default-features = false, features = [
     "hex",
 ] }
+sha2 = { version = "0.10", default-features = false }
 time = { version = "=0.3.36", default-features = false }
 
 [profile.dev.build-override]

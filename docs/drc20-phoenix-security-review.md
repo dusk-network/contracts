@@ -9,7 +9,7 @@ Status: implementation review for `standards/drc20-phoenix-architecture`.
 - Public-input builder and client-flow example.
 - Dedicated fixed-arity DRC20Phoenix circuit package.
 - Local `rusk-private` smoke with the Forge reference contract, matching
-  `rusk-wallet` 0.3.0 binary, and generated development verifier artifacts.
+  `rusk-wallet` 0.3.0 binary, and generated Dusk-CRS verifier artifacts.
 
 ## Findings And Resolutions
 
@@ -35,14 +35,14 @@ duplicates, unsupported arities, empty verifier data, and verifier-data hash
 mismatches. The production path selects verifier data by the call arity and
 calls `abi::verify_plonk` in contract builds.
 
-Development verifier artifacts and `manifest.json` are committed under
-`standards/drc20-phoenix-circuits/verifier-data/`. They are generated from
-deterministic development public parameters and are explicitly not final
-mainnet artifacts.
+Verifier artifacts and `manifest.json` are committed under
+`standards/drc20-phoenix-circuits/verifier-data/`. They are generated from the
+official Dusk CRS `devnet-piecrust.crs`, pinned to SHA-256
+`6161605616b62356cf09fa28252c672ef53b2c8489ad5f81d87af26e105f6059`.
 
-Residual risk: production deployments need audited verifier-data artifacts and
-production CRS/public-parameter pinning. If verifier updates are ever allowed,
-they should go through timelocked/multisig governance.
+Residual risk: production deployments still need circuit and verifier-artifact
+audit. If verifier updates are ever allowed, they should go through
+timelocked/multisig governance.
 
 ### Verifier Misuse
 
@@ -77,7 +77,7 @@ Minting requires admin authorization, checked arithmetic, cap enforcement, and
 proof public-input equality before mutation.
 
 The circuit proves value conservation for the supported fixed arities. Residual
-risk remains around audit and production CRS pinning.
+risk remains around audit of the Dusk-CRS-generated verifier artifacts.
 
 ### Burn Accounting
 
@@ -139,9 +139,8 @@ Pause blocks mint, transfer, and burn. Queries remain available.
 
 The standards-layer state machine is hardened against ordinary state-machine
 and replay bugs, and the branch now includes a first custom private-asset
-circuit package, fixed v1 arities, verifier dispatch, and development verifier
+circuit package, fixed v1 arities, verifier dispatch, and Dusk-CRS verifier
 artifacts. The local-node smoke deploys the Forge reference and submits real
 mint, transfer, and burn proofs over RPC. The remaining blocker is
-productionization: external audit, production CRS/verifier artifacts, wallet SDK
-integration, indexer/privacy behavior, and broader RPC coverage beyond the
-reference smoke.
+productionization: external audit, wallet SDK integration, indexer/privacy
+behavior, and broader RPC coverage beyond the reference smoke.

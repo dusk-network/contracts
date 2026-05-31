@@ -6,7 +6,7 @@
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use drc20_phoenix_circuits::{
     compile, verifier_config, verifier_data, DEV_ARTIFACT_TREE_HEIGHT,
@@ -19,21 +19,30 @@ use dusk_contract_standards::token::drc20_phoenix::{
 use dusk_plonk::prelude::PublicParameters;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use sha2::{Digest, Sha256};
 
 const SETUP_SIZE: usize = 1 << 16;
 const DEV_SEED: u64 = 0x4452_4332_3050_484f;
+const DUSK_CRS_HASH: &str =
+    "6161605616b62356cf09fa28252c672ef53b2c8489ad5f81d87af26e105f6059";
+const DUSK_CRS_FILE: &str = "devnet-piecrust.crs";
+
+struct CrsMetadata {
+    status: &'static str,
+    warning: &'static str,
+    source: String,
+    sha256: String,
+}
 
 fn main() {
-    let out_dir =
-        env::args_os().nth(1).map(PathBuf::from).unwrap_or_else(|| {
-            PathBuf::from("standards/drc20-phoenix-circuits/verifier-data")
-        });
+    let args = env::args_os().collect::<Vec<_>>();
+    let out_dir = args.get(1).map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from("standards/drc20-phoenix-circuits/verifier-data")
+    });
+    let crs_arg = args.get(2).and_then(|value| value.to_str());
     fs::create_dir_all(&out_dir).expect("create verifier-data directory");
 
-    let mut rng = StdRng::seed_from_u64(DEV_SEED);
-    eprintln!("setting up development public parameters: {SETUP_SIZE}");
-    let pp = PublicParameters::setup(SETUP_SIZE, &mut rng)
-        .expect("setup development public parameters");
+    let (pp, crs) = public_parameters(crs_arg);
 
     let mut configs = Vec::new();
     for arity in SUPPORTED_ARITIES {
@@ -50,8 +59,57 @@ fn main() {
         configs.push((arity.key, arity.public_input_count, filename, config));
     }
 
-    fs::write(out_dir.join("manifest.json"), manifest(&configs))
+    fs::write(out_dir.join("manifest.json"), manifest(&configs, &crs))
         .expect("write verifier manifest");
+}
+
+fn public_parameters(crs_arg: Option<&str>) -> (PublicParameters, CrsMetadata) {
+    if matches!(crs_arg, Some("--dev")) {
+        if env::var_os("DRC20_PHOENIX_ALLOW_DEV_CRS").is_none() {
+            panic!(
+                "--dev requires DRC20_PHOENIX_ALLOW_DEV_CRS=1 to avoid accidental dev artifacts"
+            );
+        }
+        let mut rng = StdRng::seed_from_u64(DEV_SEED);
+        eprintln!("setting up development public parameters: {SETUP_SIZE}");
+        let pp = PublicParameters::setup(SETUP_SIZE, &mut rng)
+            .expect("setup development public parameters");
+        return (
+            pp,
+            CrsMetadata {
+                status: "development-generated",
+                warning: "Verifier data generated with deterministic development public parameters; do not use for production.",
+                source: "deterministic-dev-setup".into(),
+                sha256: format!("dev-seed:{DEV_SEED}"),
+            },
+        );
+    }
+
+    let path = crs_arg.map(PathBuf::from).unwrap_or_else(default_crs_path);
+    let bytes = fs::read(&path).unwrap_or_else(|err| {
+        panic!("read Dusk CRS from {} failed: {err}", path.display())
+    });
+    let sha256 = sha256_hex(&bytes);
+    if sha256 != DUSK_CRS_HASH {
+        panic!(
+            "Dusk CRS hash mismatch for {}: expected {}, got {}",
+            path.display(),
+            DUSK_CRS_HASH,
+            sha256
+        );
+    }
+    eprintln!("loading Dusk CRS: {} ({sha256})", path.display());
+    let pp = PublicParameters::from_slice(&bytes)
+        .expect("decode Dusk CRS public parameters");
+    (
+        pp,
+        CrsMetadata {
+            status: "dusk-crs-generated",
+            warning: "Verifier data generated from the official Dusk CRS; circuit and artifact audit still required before production use.",
+            source: path.display().to_string(),
+            sha256,
+        },
+    )
 }
 
 fn compile_config(
@@ -116,13 +174,17 @@ fn manifest(
         String,
         PrivateAssetVerifierConfig,
     )],
+    crs: &CrsMetadata,
 ) -> String {
     let mut out = String::new();
     out.push_str("{\n");
-    out.push_str("  \"status\": \"development-generated\",\n");
-    out.push_str(
-        "  \"warning\": \"Verifier data generated with deterministic development public parameters; audit and production CRS pinning required before mainnet use.\",\n",
-    );
+    out.push_str(&format!("  \"status\": \"{}\",\n", crs.status));
+    out.push_str(&format!("  \"warning\": \"{}\",\n", crs.warning));
+    out.push_str("  \"crs\": {\n");
+    out.push_str("    \"name\": \"Dusk devnet-piecrust\",\n");
+    out.push_str(&format!("    \"source\": \"{}\",\n", crs.source));
+    out.push_str(&format!("    \"sha256\": \"{}\"\n", crs.sha256));
+    out.push_str("  },\n");
     out.push_str(&format!(
         "  \"transcript_label\": \"{}\",\n",
         String::from_utf8_lossy(TRANSCRIPT_LABEL)
@@ -132,7 +194,6 @@ fn manifest(
         DEV_ARTIFACT_TREE_HEIGHT
     ));
     out.push_str(&format!("  \"setup_size\": {},\n", SETUP_SIZE));
-    out.push_str(&format!("  \"dev_seed\": {},\n", DEV_SEED));
     out.push_str("  \"verifiers\": [\n");
     for (idx, (key, public_input_count, file, config)) in
         configs.iter().enumerate()
@@ -174,6 +235,21 @@ fn mode_name(mode: PrivateAssetCircuitMode) -> &'static str {
         PrivateAssetCircuitMode::Transfer => "transfer",
         PrivateAssetCircuitMode::Burn => "burn",
     }
+}
+
+fn default_crs_path() -> PathBuf {
+    if let Some(path) = env::var_os("DUSK_CRS_PATH") {
+        return PathBuf::from(path);
+    }
+    let home = env::var_os("HOME").expect("HOME must be set or pass CRS path");
+    Path::new(&home)
+        .join(".dusk")
+        .join("rusk")
+        .join(DUSK_CRS_FILE)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    hex(&Sha256::digest(bytes))
 }
 
 fn hex(bytes: &[u8]) -> String {

@@ -49,8 +49,8 @@ Implementation status on this branch:
   tests use a `#[cfg(test)]` verifier that cannot be imported by downstream
   contracts.
 - This branch includes a first custom fixed-arity private-asset circuit package
-  and development-generated verifier-data artifacts. The circuit and artifacts
-  are not yet externally audited and are not mainnet-production CRS artifacts.
+  and Dusk-CRS-generated verifier-data artifacts. The circuit and artifacts are
+  not yet externally audited.
 - `standards/examples/drc20_phoenix` adds a Forge reference wrapper and
   data-driver build target around the standards primitive.
 - `standards/drc20-phoenix-circuits` adds the first dedicated fixed-arity
@@ -62,8 +62,8 @@ Implementation status on this branch:
   verifier manifest at initialization.
 - `scripts/drc20-phoenix-local-rusk-private-smoke.sh` adds a fail-closed local
   `rusk-private` preflight. It builds the standards crate, Forge reference, and
-  client flow, regenerates development verifier data, runs the circuit proof
-  tests, and can submit a full local RPC flow when
+  client flow, regenerates Dusk-CRS verifier data, runs the circuit proof tests,
+  and can submit a full local RPC flow when
   `DRC20_PHOENIX_REAL_CIRCUIT=1` is set. The validated flow deploys the Forge
   reference, mints private notes, rejects a mutated proof, transfers privately,
   rejects replayed nullifiers, burns privately, and checks pause semantics.
@@ -960,8 +960,8 @@ audit/viewing-key support
 
 ## Open Questions
 
-1. Which production CRS/public parameters should be pinned for audited verifier
-   data?
+1. Should the official Dusk CRS remain the only accepted CRS for v1 verifier
+   data, or should a future network upgrade define a new CRS version?
 2. Should Phoenix core note primitives be extended with asset ids, or should
    `DRC20Phoenix` define `PrivateAssetNote` independently?
 3. What tree depth is required for popular custom fungible tokens?

@@ -1,10 +1,14 @@
 {
-  "status": "development-generated",
-  "warning": "Verifier data generated with deterministic development public parameters; audit and production CRS pinning required before mainnet use.",
+  "status": "dusk-crs-generated",
+  "warning": "Verifier data generated from the official Dusk CRS; circuit and artifact audit still required before production use.",
+  "crs": {
+    "name": "Dusk devnet-piecrust",
+    "source": "/home/hein_/.dusk/rusk/devnet-piecrust.crs",
+    "sha256": "6161605616b62356cf09fa28252c672ef53b2c8489ad5f81d87af26e105f6059"
+  },
   "transcript_label": "DRC20Phoenix.private_asset.v1",
   "tree_height": 4,
   "setup_size": 65536,
-  "dev_seed": 4923071225507366991,
   "verifiers": [
     {
       "version": 1,
@@ -13,7 +17,7 @@
       "output_count": 1,
       "public_input_count": 15,
       "file": "drc20-phoenix-v1-mint-0x1.vd",
-      "verifier_data_hash": "282e2036add45ac6fb89b115b8aacff9a419e70404f73f8605cef4c4ea78d563"
+      "verifier_data_hash": "1520252b760191312fd0fdfbacc5047a3818029202da393c1c309ac7b12a540d"
     },
     {
       "version": 1,
@@ -22,7 +26,7 @@
       "output_count": 2,
       "public_input_count": 16,
       "file": "drc20-phoenix-v1-mint-0x2.vd",
-      "verifier_data_hash": "9efcfb81378f92f29f6fa4d44ca5b8fcc74c14d89833699100a93187585ebe47"
+      "verifier_data_hash": "87b7a2943a36e7c3e08217b502b8b7c6d5752d378afd4d030e8c1d755004bf21"
     },
     {
       "version": 1,
@@ -31,7 +35,7 @@
       "output_count": 2,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-transfer-1x2.vd",
-      "verifier_data_hash": "ccd7eb63fc4440df3f51d41bf99482e1ed3c1e56c55cd42c211347277d143067"
+      "verifier_data_hash": "95a93420f91b5217d8595abd86dd8d77165fe017533c52f397cbf9404b515e40"
     },
     {
       "version": 1,
@@ -40,7 +44,7 @@
       "output_count": 2,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-transfer-2x2.vd",
-      "verifier_data_hash": "e4132f2a0a7be506792ec7cb93ae8d4cc643372ebf676e158e357bda8cd9a61c"
+      "verifier_data_hash": "430ba126228fdfe17f8466f75a21f0872cea8f1e0db50b49f6c109d3d8e0d764"
     },
     {
       "version": 1,
@@ -49,7 +53,7 @@
       "output_count": 2,
       "public_input_count": 19,
       "file": "drc20-phoenix-v1-transfer-3x2.vd",
-      "verifier_data_hash": "fa3fae29ca73bda4af170b380f3edd26568138fbf9850cf5125c6f06fd3ed86f"
+      "verifier_data_hash": "875fc52fca3dc7cffbb5611afb24bb463f42cf9a3217b45d19d322c26bbeae34"
     },
     {
       "version": 1,
@@ -58,7 +62,7 @@
       "output_count": 2,
       "public_input_count": 20,
       "file": "drc20-phoenix-v1-transfer-4x2.vd",
-      "verifier_data_hash": "8ef6a3bb3807573a98ca847ed1a970ee702b0985c26789a695ec1613ec784334"
+      "verifier_data_hash": "4a0a31e97e57b43ca15804db9fd8ae98bb4ac094b26bfea0e9b86e78942b7256"
     },
     {
       "version": 1,
@@ -67,7 +71,7 @@
       "output_count": 0,
       "public_input_count": 15,
       "file": "drc20-phoenix-v1-burn-1x0.vd",
-      "verifier_data_hash": "27b6990cf467bbc21e1e2d3a6e249eee83887b655c316a46b048ac9327cb4748"
+      "verifier_data_hash": "0ffd4b572ef8bd748b28072d10915dfd2d39fd7062291fb085e01c38467b3c37"
     },
     {
       "version": 1,
@@ -76,7 +80,7 @@
       "output_count": 1,
       "public_input_count": 16,
       "file": "drc20-phoenix-v1-burn-1x1.vd",
-      "verifier_data_hash": "a3af68b697e4b058a80c75e60b488558302da3445d0e8dc7ab9f12cb0c53443f"
+      "verifier_data_hash": "9a9f98c9b735a486fc6d84fb89becfe5c0809440dbacb04796b62341d4a8420e"
     },
     {
       "version": 1,
@@ -85,7 +89,7 @@
       "output_count": 2,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-burn-1x2.vd",
-      "verifier_data_hash": "f51326a354ecde32f419c09ad23558cf7a35ed23c1b4c8302cd314e0b7b8b420"
+      "verifier_data_hash": "2655c6bc1b0f3ae26ca42f37e8f9ee450289b2eccb821fee7effd0faf3897f37"
     },
     {
       "version": 1,
@@ -94,7 +98,7 @@
       "output_count": 0,
       "public_input_count": 16,
       "file": "drc20-phoenix-v1-burn-2x0.vd",
-      "verifier_data_hash": "1a2603c33938ba90bdb45b67ae15efea20060f83d6400ff4e4e44e6aa1751f35"
+      "verifier_data_hash": "8c60397a6fd2ff2cb9ead3eb0005b78676aa7d14949c3975ff444b125926fa25"
     },
     {
       "version": 1,
@@ -103,7 +107,7 @@
       "output_count": 1,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-burn-2x1.vd",
-      "verifier_data_hash": "b1c3b5fc937cceb4fc315539d7b47ef4dbd34d82d252c0b56dac3f2e101c336a"
+      "verifier_data_hash": "106498c4f38b1d0e22e021d587a3c1fa31abec20f250717915575119df20cc25"
     },
     {
       "version": 1,
@@ -112,7 +116,7 @@
       "output_count": 2,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-burn-2x2.vd",
-      "verifier_data_hash": "02a73d73c6f4384f90f69451c741b6c2e5d53c4e9e4aebe2e464caaed6466e2b"
+      "verifier_data_hash": "9063d80b3e7b432140965233e3c862b5defb8bbb6cf88b80358a3bf91ac3a84b"
     },
     {
       "version": 1,
@@ -121,7 +125,7 @@
       "output_count": 0,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-burn-3x0.vd",
-      "verifier_data_hash": "8cf92e5f4559194f7982a27e4192be36e43879ac5bdbea963432893f1ea7c72c"
+      "verifier_data_hash": "d589f47ac8b4e9e1cd9b10e6036a7a212938538fdf30e7074b2d661628c5fb5c"
     },
     {
       "version": 1,
@@ -130,7 +134,7 @@
       "output_count": 1,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-burn-3x1.vd",
-      "verifier_data_hash": "a56bc1a6aea8d237c01b4074c3fe1123b92ea0726d7ff4fd08581af1f317721e"
+      "verifier_data_hash": "42919981bd51578c07f65f514f3f3609d8b4331be580dbca106f86c53b28154a"
     },
     {
       "version": 1,
@@ -139,7 +143,7 @@
       "output_count": 2,
       "public_input_count": 19,
       "file": "drc20-phoenix-v1-burn-3x2.vd",
-      "verifier_data_hash": "75bde49e2a6ec5712cc79b365020c98111db7ac5c98ef00b620dbcb668ce815a"
+      "verifier_data_hash": "7dd600a10c4cdcd938d6cf208ad74d420a0de5900120f7f35028a228b5a2276a"
     },
     {
       "version": 1,
@@ -148,7 +152,7 @@
       "output_count": 0,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-burn-4x0.vd",
-      "verifier_data_hash": "e4d7fac9482740b248d59f01c609e704dc4ca2a760270d97d9acb7ed1ad4e032"
+      "verifier_data_hash": "33f77f1511aa07ea543febf1d06011cad65a6afcb1d39063ad9b2bdeeaaa995d"
     },
     {
       "version": 1,
@@ -157,7 +161,7 @@
       "output_count": 1,
       "public_input_count": 19,
       "file": "drc20-phoenix-v1-burn-4x1.vd",
-      "verifier_data_hash": "b08cfef41b9002bc4270a27c6b89617c2ccb70e232709099a6a5b5640e6a7a01"
+      "verifier_data_hash": "9aedd3bf75475c6df90d3e079df2c0b09dfed5f417a275cfb188602bdcc0b366"
     },
     {
       "version": 1,
@@ -166,7 +170,7 @@
       "output_count": 2,
       "public_input_count": 20,
       "file": "drc20-phoenix-v1-burn-4x2.vd",
-      "verifier_data_hash": "951769329489e44a40a20f67f921efc25defa1f5fa2b20d434067c25bb7a2901"
+      "verifier_data_hash": "4533f6fc45cb5a54dc0071b6fe10c5436d83a008764767240cdaacaf266f5a39"
     }
   ]
 }

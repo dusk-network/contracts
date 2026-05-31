@@ -174,16 +174,21 @@ circuit.
 The current implementation provides the strict contract-side verifier boundary,
 the public-input builder, the Forge reference wrapper, fixed-arity proof tests,
 and verifier dispatch by version/mode/input/output arity. The branch also
-contains generated development verifier-data artifacts and a manifest under:
+contains generated Dusk-CRS verifier-data artifacts and a manifest under:
 
 ```text
 standards/drc20-phoenix-circuits/verifier-data/
 ```
 
-These artifacts are pinned by hash and useful for integration work, but they
-are explicitly marked `development-generated`. They use deterministic
-development public parameters and still require audit and production CRS
-pinning before mainnet use. There is no permissive production fallback.
+These artifacts are pinned by hash and generated from the official Dusk CRS
+`devnet-piecrust.crs`, whose SHA-256 is:
+
+```text
+6161605616b62356cf09fa28252c672ef53b2c8489ad5f81d87af26e105f6059
+```
+
+They still require circuit and artifact audit before mainnet use. There is no
+permissive production fallback.
 
 ## V1 Arity Matrix
 
@@ -383,7 +388,7 @@ The implementation checks:
 Remaining production requirements:
 
 - external audit of the circuit and generated verifier-data manifest
-- production CRS/public-parameter pinning for the chosen arities
+- production artifact review for the Dusk-CRS-generated verifier set
 - wallet SDK and scanning database
 - broader wallet SDK/indexer RPC tests beyond the reference smoke
 - external audit of cryptographic constraints and public-input ordering
@@ -397,7 +402,7 @@ The smoke preflight is:
 ```
 
 It builds the standards crate, Forge reference contract, data-driver, circuit
-tests, development verifier manifest, and client payload example. By default,
+tests, Dusk-CRS verifier manifest, and client payload example. By default,
 the script refuses to submit RPC transactions unless explicitly forced:
 
 ```bash

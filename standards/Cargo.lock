@@ -830,6 +830,7 @@ dependencies = [
  "dusk-poseidon",
  "rand 0.8.6",
  "rkyv",
+ "sha2 0.10.9",
  "thiserror",
 ]
 

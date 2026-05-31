@@ -6,7 +6,7 @@
 
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use drc20_phoenix_circuits::{
     compile, prove, Drc20PhoenixCircuit, FixedPublicInputs, InputNoteWitness,
@@ -25,9 +25,13 @@ use dusk_core::BlsScalar;
 use dusk_plonk::prelude::PublicParameters;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use sha2::{Digest, Sha256};
 
 const SETUP_SIZE: usize = 1 << 16;
 const DEV_SEED: u64 = 0x4452_4332_3050_484f;
+const DUSK_CRS_HASH: &str =
+    "6161605616b62356cf09fa28252c672ef53b2c8489ad5f81d87af26e105f6059";
+const DUSK_CRS_FILE: &str = "devnet-piecrust.crs";
 const ADMIN: AdminId = [7; 32];
 
 #[derive(Clone, Copy)]
@@ -74,6 +78,7 @@ fn build(args: &[String]) {
         .get(4)
         .map(|value| value.parse::<u8>().expect("u8 chain id"))
         .unwrap_or(0);
+    let crs_arg = args.get(5).map(String::as_str);
     let verifier_set = verifier_set(verifier_dir);
 
     let mut token = Drc20Phoenix::new();
@@ -93,8 +98,7 @@ fn build(args: &[String]) {
     };
     token.init(init.clone());
 
-    let mut setup_rng = StdRng::seed_from_u64(DEV_SEED);
-    let pp = PublicParameters::setup(SETUP_SIZE, &mut setup_rng).unwrap();
+    let pp = public_parameters(crs_arg);
     let mut rng = StdRng::seed_from_u64(11);
     let asset_id = token.asset_id();
 
@@ -396,6 +400,50 @@ fn parse_contract_id(hex_value: &str) -> ContractId {
     let bytes = decode_hex(hex_value);
     let bytes: [u8; 32] = bytes.try_into().expect("32-byte contract id");
     ContractId::from_bytes(bytes)
+}
+
+fn public_parameters(crs_arg: Option<&str>) -> PublicParameters {
+    if matches!(crs_arg, Some("--dev")) {
+        if env::var_os("DRC20_PHOENIX_ALLOW_DEV_CRS").is_none() {
+            panic!(
+                "--dev requires DRC20_PHOENIX_ALLOW_DEV_CRS=1 to avoid accidental dev proofs"
+            );
+        }
+        let mut setup_rng = StdRng::seed_from_u64(DEV_SEED);
+        return PublicParameters::setup(SETUP_SIZE, &mut setup_rng)
+            .expect("setup development public parameters");
+    }
+
+    let path = crs_arg.map(PathBuf::from).unwrap_or_else(default_crs_path);
+    let bytes = fs::read(&path).unwrap_or_else(|err| {
+        panic!("read Dusk CRS from {} failed: {err}", path.display())
+    });
+    let sha256 = sha256_hex(&bytes);
+    if sha256 != DUSK_CRS_HASH {
+        panic!(
+            "Dusk CRS hash mismatch for {}: expected {}, got {}",
+            path.display(),
+            DUSK_CRS_HASH,
+            sha256
+        );
+    }
+    PublicParameters::from_slice(&bytes)
+        .expect("decode Dusk CRS public parameters")
+}
+
+fn default_crs_path() -> PathBuf {
+    if let Some(path) = env::var_os("DUSK_CRS_PATH") {
+        return PathBuf::from(path);
+    }
+    let home = env::var_os("HOME").expect("HOME must be set or pass CRS path");
+    Path::new(&home)
+        .join(".dusk")
+        .join("rusk")
+        .join(DUSK_CRS_FILE)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    hex(&Sha256::digest(bytes))
 }
 
 fn scalar(value: u64) -> BlsScalar {
