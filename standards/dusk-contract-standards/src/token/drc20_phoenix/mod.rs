@@ -1472,13 +1472,13 @@ impl PrivateNoteTree {
         let defaults = default_subtree_roots();
         let mut siblings = Vec::new();
 
-        for height in 0..DRC20_PHOENIX_TREE_HEIGHT {
+        for default_hash in defaults.iter().take(DRC20_PHOENIX_TREE_HEIGHT) {
             let is_right = index % 2 == 1;
             let sibling_index = if is_right { index - 1 } else { index + 1 };
             let sibling_hash = level
                 .get(sibling_index)
                 .copied()
-                .unwrap_or(defaults[height]);
+                .unwrap_or(*default_hash);
             siblings.push(MerkleSibling {
                 hash: sibling_hash,
                 is_left: is_right,
@@ -1487,7 +1487,7 @@ impl PrivateNoteTree {
             let mut next = Vec::with_capacity(level.len().div_ceil(2));
             for pair in level.chunks(2) {
                 let left = pair[0];
-                let right = pair.get(1).copied().unwrap_or(defaults[height]);
+                let right = pair.get(1).copied().unwrap_or(*default_hash);
                 next.push(hash_pair(left, right));
             }
             index /= 2;
@@ -1674,11 +1674,11 @@ fn merkle_root(commitments: impl IntoIterator<Item = BlsScalar>) -> BlsScalar {
     if level.is_empty() {
         return defaults[DRC20_PHOENIX_TREE_HEIGHT];
     }
-    for height in 0..DRC20_PHOENIX_TREE_HEIGHT {
+    for default_hash in defaults.iter().take(DRC20_PHOENIX_TREE_HEIGHT) {
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
             let left = pair[0];
-            let right = pair.get(1).copied().unwrap_or(defaults[height]);
+            let right = pair.get(1).copied().unwrap_or(*default_hash);
             next.push(hash_pair(left, right));
         }
         level = next;
