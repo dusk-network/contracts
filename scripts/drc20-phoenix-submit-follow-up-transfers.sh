@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STANDARDS_DIR="${ROOT_DIR}/standards"
 CARGO_TOOLCHAIN="${CARGO_TOOLCHAIN:-nightly-2026-02-27}"
+CARGO_RUN_PROFILE="${DRC20_PHOENIX_CARGO_RUN_PROFILE:---release}"
 RUSK_STATE_URL="${RUSK_STATE_URL:-https://testnet.nodes.dusk.network}"
 RUSK_PROVER_URL="${RUSK_PROVER_URL:-${RUSK_STATE_URL}}"
 RUSK_WALLET_BIN="${RUSK_WALLET_BIN:-/home/hein_/projects/rusk-private/target/release/rusk-wallet}"
@@ -40,6 +41,14 @@ cargo_cmd() {
     cargo +"${CARGO_TOOLCHAIN}" "$@"
 }
 
+cargo_run() {
+    local args=(run -q)
+    if [ -n "${CARGO_RUN_PROFILE}" ]; then
+        args+=("${CARGO_RUN_PROFILE}")
+    fi
+    cargo_cmd "${args[@]}" "$@"
+}
+
 query_hex() {
     local fn_name="$1"
     curl -fsS \
@@ -53,7 +62,7 @@ query_hex() {
 decode_u64() {
     (
         cd "${STANDARDS_DIR}"
-        cargo_cmd run -q -p drc20-phoenix-circuits \
+        cargo_run -p drc20-phoenix-circuits \
             --example build_local_rusk_private_flow -- decode-u64 "$1"
     )
 }
@@ -61,7 +70,7 @@ decode_u64() {
 decode_u128() {
     (
         cd "${STANDARDS_DIR}"
-        cargo_cmd run -q -p drc20-phoenix-circuits \
+        cargo_run -p drc20-phoenix-circuits \
             --example build_local_rusk_private_flow -- decode-u128 "$1"
     )
 }
@@ -119,7 +128,7 @@ fi
 echo "==> Building deterministic DRC20Phoenix transfer flow for ${CONTRACT_ID}"
 (
     cd "${STANDARDS_DIR}"
-    cargo_cmd run -q -p drc20-phoenix-circuits \
+    cargo_run -p drc20-phoenix-circuits \
         --example build_local_rusk_private_flow -- \
         build "${CONTRACT_ID}" "${VERIFIER_DATA_DIR}" "${CHAIN_ID}" \
         > "${FLOW_ARGS_FILE}"

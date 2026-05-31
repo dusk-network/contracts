@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STANDARDS_DIR="${ROOT_DIR}/standards"
 CARGO_TOOLCHAIN="${CARGO_TOOLCHAIN:-nightly-2026-02-27}"
+CARGO_RUN_PROFILE="${DRC20_PHOENIX_CARGO_RUN_PROFILE:---release}"
 VERIFIER_DATA_DIR="${DRC20_PHOENIX_VERIFIER_DATA_DIR:-${STANDARDS_DIR}/drc20-phoenix-circuits/verifier-data}"
 
 RUSK_PRIVATE_BIN="${RUSK_PRIVATE_BIN:-}"
@@ -100,6 +101,14 @@ cargo_cmd() {
     cargo +"${CARGO_TOOLCHAIN}" "$@"
 }
 
+cargo_run() {
+    local args=(run -q)
+    if [ -n "${CARGO_RUN_PROFILE}" ]; then
+        args+=("${CARGO_RUN_PROFILE}")
+    fi
+    cargo_cmd "${args[@]}" "$@"
+}
+
 hex_contract_id_from_wallet_output() {
     awk -F'[][]' '/Contract ID:/ {print $2}' \
         | tr ',' '\n' \
@@ -144,7 +153,7 @@ query_hex() {
 decode_u64() {
     (
         cd "${STANDARDS_DIR}"
-        cargo_cmd run -q -p drc20-phoenix-circuits \
+        cargo_run -p drc20-phoenix-circuits \
             --example build_local_rusk_private_flow -- decode-u64 "$1"
     )
 }
@@ -152,7 +161,7 @@ decode_u64() {
 decode_u32() {
     (
         cd "${STANDARDS_DIR}"
-        cargo_cmd run -q -p drc20-phoenix-circuits \
+        cargo_run -p drc20-phoenix-circuits \
             --example build_local_rusk_private_flow -- decode-u32 "$1"
     )
 }
@@ -160,7 +169,7 @@ decode_u32() {
 decode_u128() {
     (
         cd "${STANDARDS_DIR}"
-        cargo_cmd run -q -p drc20-phoenix-circuits \
+        cargo_run -p drc20-phoenix-circuits \
             --example build_local_rusk_private_flow -- decode-u128 "$1"
     )
 }
@@ -168,7 +177,7 @@ decode_u128() {
 decode_bool() {
     (
         cd "${STANDARDS_DIR}"
-        cargo_cmd run -q -p drc20-phoenix-circuits \
+        cargo_run -p drc20-phoenix-circuits \
             --example build_local_rusk_private_flow -- decode-bool "$1"
     )
 }
@@ -399,7 +408,7 @@ echo "contract_id=${CONTRACT_ID}"
 echo "==> Building real DRC20Phoenix proof call arguments"
 (
     cd "${STANDARDS_DIR}"
-    cargo_cmd run -q -p drc20-phoenix-circuits \
+    cargo_run -p drc20-phoenix-circuits \
         --example build_local_rusk_private_flow -- \
         build "${CONTRACT_ID}" "${VERIFIER_DATA_DIR}" > "${FLOW_ARGS_FILE}"
 )
