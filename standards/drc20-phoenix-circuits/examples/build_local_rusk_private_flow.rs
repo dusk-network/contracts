@@ -4,6 +4,7 @@
 //
 // Copyright (c) DUSK NETWORK. All rights reserved.
 
+use std::collections::VecDeque;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,7 @@ use dusk_contract_standards::token::drc20_phoenix::{
     AdminId, Drc20Phoenix, Init, PrivateAssetCircuitMode, PrivateAssetNote,
     PrivateAssetProof, PrivateAssetPublicInputBuilder, PrivateAssetVerifier,
     PrivateAssetVerifierConfig, PrivateBurn, PrivateMint, PrivateTransfer,
-    TokenMetadata, V1_SUPPORTED_ARITIES,
+    TokenMetadata, DRC20_PHOENIX_TREE_HEIGHT, V1_SUPPORTED_ARITIES,
 };
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
@@ -56,6 +57,12 @@ struct NoteWitness {
     value_blinder: BlsScalar,
     nonce: BlsScalar,
     payload_hash: BlsScalar,
+}
+
+#[derive(Clone)]
+struct SpendableNote {
+    witness: NoteWitness,
+    position: u64,
 }
 
 fn main() {
@@ -326,68 +333,35 @@ fn build(args: &[String]) {
         &DevVerifier,
     );
 
-    let third_extra_transfer_notes =
-        [note(asset_id, 9, 5), note(asset_id, 10, 10)];
-    let third_extra_transfer = transfer_call(
+    let mut spendable = VecDeque::from([
+        SpendableNote {
+            witness: extra_transfer_notes[0].clone(),
+            position: 4,
+        },
+        SpendableNote {
+            witness: extra_transfer_notes[1].clone(),
+            position: 5,
+        },
+        SpendableNote {
+            witness: second_extra_transfer_notes[0].clone(),
+            position: 6,
+        },
+        SpendableNote {
+            witness: second_extra_transfer_notes[1].clone(),
+            position: 7,
+        },
+    ]);
+    let follow_up_transfers = build_follow_up_transfers(
         &mut token,
         &pp,
         &mut rng,
         chain_id,
         contract_id,
         asset_id,
-        &extra_transfer_notes[0],
-        4,
-        third_extra_transfer_notes.clone(),
-        scalar(905),
-        6,
-    );
-
-    let fourth_extra_transfer_notes =
-        [note(asset_id, 11, 12), note(asset_id, 12, 13)];
-    let fourth_extra_transfer = transfer_call(
-        &mut token,
-        &pp,
-        &mut rng,
-        chain_id,
-        contract_id,
-        asset_id,
-        &extra_transfer_notes[1],
-        5,
-        fourth_extra_transfer_notes.clone(),
-        scalar(906),
-        7,
-    );
-
-    let fifth_extra_transfer_notes =
-        [note(asset_id, 13, 4), note(asset_id, 14, 6)];
-    let fifth_extra_transfer = transfer_call(
-        &mut token,
-        &pp,
-        &mut rng,
-        chain_id,
-        contract_id,
-        asset_id,
-        &second_extra_transfer_notes[0],
-        6,
-        fifth_extra_transfer_notes.clone(),
-        scalar(907),
-        8,
-    );
-
-    let sixth_extra_transfer_notes =
-        [note(asset_id, 15, 20), note(asset_id, 16, 5)];
-    let sixth_extra_transfer = transfer_call(
-        &mut token,
-        &pp,
-        &mut rng,
-        chain_id,
-        contract_id,
-        asset_id,
-        &second_extra_transfer_notes[1],
-        7,
-        sixth_extra_transfer_notes,
-        scalar(908),
+        &mut spendable,
         9,
+        905,
+        6,
     );
 
     let pause_args = ADMIN;
@@ -403,22 +377,26 @@ fn build(args: &[String]) {
         "second_extra_transfer_args={}",
         encode(&second_extra_transfer)
     );
-    println!(
-        "third_extra_transfer_args={}",
-        encode(&third_extra_transfer)
-    );
-    println!(
-        "fourth_extra_transfer_args={}",
-        encode(&fourth_extra_transfer)
-    );
-    println!(
-        "fifth_extra_transfer_args={}",
-        encode(&fifth_extra_transfer)
-    );
-    println!(
-        "sixth_extra_transfer_args={}",
-        encode(&sixth_extra_transfer)
-    );
+    for (idx, transfer) in follow_up_transfers.iter().enumerate() {
+        println!("follow_up_transfer_{}_args={}", idx + 1, encode(transfer));
+        println!(
+            "expected_num_notes_after_follow_up_transfer_{}={}",
+            idx + 1,
+            10 + (idx as u64 * 2)
+        );
+    }
+    if let Some(transfer) = follow_up_transfers.first() {
+        println!("third_extra_transfer_args={}", encode(transfer));
+    }
+    if let Some(transfer) = follow_up_transfers.get(1) {
+        println!("fourth_extra_transfer_args={}", encode(transfer));
+    }
+    if let Some(transfer) = follow_up_transfers.get(2) {
+        println!("fifth_extra_transfer_args={}", encode(transfer));
+    }
+    if let Some(transfer) = follow_up_transfers.get(3) {
+        println!("sixth_extra_transfer_args={}", encode(transfer));
+    }
     println!("pause_args={}", encode(&pause_args));
     println!("unpause_args={}", encode(&unpause_args));
     println!("expected_asset_id={}", hex(&asset_id.to_bytes()));
@@ -430,10 +408,74 @@ fn build(args: &[String]) {
     println!("expected_num_notes_after_burn=4");
     println!("expected_num_notes_after_extra_transfer=6");
     println!("expected_num_notes_after_second_extra_transfer=8");
+    println!(
+        "expected_num_notes_after_all_follow_up_transfers={}",
+        token.num_notes()
+    );
     println!("expected_num_notes_after_third_extra_transfer=10");
     println!("expected_num_notes_after_fourth_extra_transfer=12");
     println!("expected_num_notes_after_fifth_extra_transfer=14");
     println!("expected_num_notes_after_sixth_extra_transfer=16");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_follow_up_transfers(
+    token: &mut Drc20Phoenix,
+    pp: &PublicParameters,
+    rng: &mut StdRng,
+    chain_id: u8,
+    contract_id: ContractId,
+    asset_id: BlsScalar,
+    spendable: &mut VecDeque<SpendableNote>,
+    first_seed: u64,
+    first_memo: u64,
+    first_block_height: u64,
+) -> Vec<PrivateTransfer> {
+    let capacity = 1u64 << DRC20_PHOENIX_TREE_HEIGHT;
+    let mut next_seed = first_seed;
+    let mut next_memo = first_memo;
+    let mut next_block_height = first_block_height;
+    let mut transfers = Vec::new();
+
+    while token.num_notes() + 2 <= capacity {
+        let Some(input) = spendable.pop_front() else {
+            break;
+        };
+        let first_value = input.witness.value / 2;
+        let second_value = input.witness.value - first_value;
+        let outputs = [
+            note(asset_id, next_seed, first_value),
+            note(asset_id, next_seed + 1, second_value),
+        ];
+        let first_output_position = token.num_notes();
+        let transfer = transfer_call(
+            token,
+            pp,
+            rng,
+            chain_id,
+            contract_id,
+            asset_id,
+            &input.witness,
+            input.position,
+            outputs.clone(),
+            scalar(next_memo),
+            next_block_height,
+        );
+        spendable.push_back(SpendableNote {
+            witness: outputs[0].clone(),
+            position: first_output_position,
+        });
+        spendable.push_back(SpendableNote {
+            witness: outputs[1].clone(),
+            position: first_output_position + 1,
+        });
+        transfers.push(transfer);
+        next_seed += 2;
+        next_memo += 1;
+        next_block_height += 1;
+    }
+
+    transfers
 }
 
 #[allow(clippy::too_many_arguments)]
