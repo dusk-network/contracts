@@ -780,8 +780,13 @@ max memo size
 sync pagination limits
 ```
 
-Confirm whether the native Phoenix tree depth is appropriate for custom
-fungible tokens; popular tokens may need a larger tree.
+The current v1 implementation uses tree height `23`, or `8,388,608` note
+slots. This is intentionally much larger than the original dev height and is
+selected to keep the note/nullifier state in the right order of magnitude for a
+3 GB storage budget. A larger tree, such as height `24`, should not be treated
+as a free upgrade because the serialized note log, encrypted payloads,
+nullifier log, roots, and indexer copies can push total storage beyond that
+budget.
 
 ## Testing Plan
 

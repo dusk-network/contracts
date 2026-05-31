@@ -7,7 +7,7 @@
     "sha256": "6161605616b62356cf09fa28252c672ef53b2c8489ad5f81d87af26e105f6059"
   },
   "transcript_label": "DRC20Phoenix.private_asset.v1",
-  "tree_height": 4,
+  "tree_height": 23,
   "setup_size": 65536,
   "verifiers": [
     {
@@ -35,7 +35,7 @@
       "output_count": 2,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-transfer-1x2.vd",
-      "verifier_data_hash": "95a93420f91b5217d8595abd86dd8d77165fe017533c52f397cbf9404b515e40"
+      "verifier_data_hash": "8854874acf13e511eb7c9a9318d261e5245baf0ec0dccb56714d2e1003b56831"
     },
     {
       "version": 1,
@@ -44,7 +44,7 @@
       "output_count": 2,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-transfer-2x2.vd",
-      "verifier_data_hash": "430ba126228fdfe17f8466f75a21f0872cea8f1e0db50b49f6c109d3d8e0d764"
+      "verifier_data_hash": "a7e0be242ff9fc88b1b85fa89baf4cbea22260376ab5afed1a753a598b72ca11"
     },
     {
       "version": 1,
@@ -53,7 +53,7 @@
       "output_count": 2,
       "public_input_count": 19,
       "file": "drc20-phoenix-v1-transfer-3x2.vd",
-      "verifier_data_hash": "875fc52fca3dc7cffbb5611afb24bb463f42cf9a3217b45d19d322c26bbeae34"
+      "verifier_data_hash": "5e9129c9c0cbff4bd1813ae058db0591f2181308184e42c6916c651901030f23"
     },
     {
       "version": 1,
@@ -62,7 +62,7 @@
       "output_count": 2,
       "public_input_count": 20,
       "file": "drc20-phoenix-v1-transfer-4x2.vd",
-      "verifier_data_hash": "4a0a31e97e57b43ca15804db9fd8ae98bb4ac094b26bfea0e9b86e78942b7256"
+      "verifier_data_hash": "a7148df937e082aa756a5eb0de50562e236aa9f6cb6fae8baabf5b9d5e45d254"
     },
     {
       "version": 1,
@@ -71,7 +71,7 @@
       "output_count": 0,
       "public_input_count": 15,
       "file": "drc20-phoenix-v1-burn-1x0.vd",
-      "verifier_data_hash": "0ffd4b572ef8bd748b28072d10915dfd2d39fd7062291fb085e01c38467b3c37"
+      "verifier_data_hash": "996afbd1ac5a67115cacbdf93398e2b9a56038ddf13eafa8d8c718176f055b55"
     },
     {
       "version": 1,
@@ -80,7 +80,7 @@
       "output_count": 1,
       "public_input_count": 16,
       "file": "drc20-phoenix-v1-burn-1x1.vd",
-      "verifier_data_hash": "9a9f98c9b735a486fc6d84fb89becfe5c0809440dbacb04796b62341d4a8420e"
+      "verifier_data_hash": "eb5612c75b74328cb576437f1e262fe1242c98d1e0f665168f23158f3ace6b10"
     },
     {
       "version": 1,
@@ -89,7 +89,7 @@
       "output_count": 2,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-burn-1x2.vd",
-      "verifier_data_hash": "2655c6bc1b0f3ae26ca42f37e8f9ee450289b2eccb821fee7effd0faf3897f37"
+      "verifier_data_hash": "a586937c529654dd989698a500239080782087566cfca9d2ba7d527df3f0691a"
     },
     {
       "version": 1,
@@ -98,7 +98,7 @@
       "output_count": 0,
       "public_input_count": 16,
       "file": "drc20-phoenix-v1-burn-2x0.vd",
-      "verifier_data_hash": "8c60397a6fd2ff2cb9ead3eb0005b78676aa7d14949c3975ff444b125926fa25"
+      "verifier_data_hash": "a926f2c1ea20fe66f7ee5d5fe29ce3963b821faba2f76eb9a4fe4d6704a22211"
     },
     {
       "version": 1,
@@ -107,7 +107,7 @@
       "output_count": 1,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-burn-2x1.vd",
-      "verifier_data_hash": "106498c4f38b1d0e22e021d587a3c1fa31abec20f250717915575119df20cc25"
+      "verifier_data_hash": "99ae3df332c8f5fa2d6c289a10afc179194b28860472f162c3e83388fecf502b"
     },
     {
       "version": 1,
@@ -116,7 +116,7 @@
       "output_count": 2,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-burn-2x2.vd",
-      "verifier_data_hash": "9063d80b3e7b432140965233e3c862b5defb8bbb6cf88b80358a3bf91ac3a84b"
+      "verifier_data_hash": "56c6eac3c21a187a15fcfd791a637707cfabf7e6f4f9a652c7f067dddd25f52b"
     },
     {
       "version": 1,
@@ -125,7 +125,7 @@
       "output_count": 0,
       "public_input_count": 17,
       "file": "drc20-phoenix-v1-burn-3x0.vd",
-      "verifier_data_hash": "d589f47ac8b4e9e1cd9b10e6036a7a212938538fdf30e7074b2d661628c5fb5c"
+      "verifier_data_hash": "f61796b113297ac68c1d328964b38462e16cbdf5f96abacf87287abae3d06255"
     },
     {
       "version": 1,
@@ -134,7 +134,7 @@
       "output_count": 1,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-burn-3x1.vd",
-      "verifier_data_hash": "42919981bd51578c07f65f514f3f3609d8b4331be580dbca106f86c53b28154a"
+      "verifier_data_hash": "d7ca532d2453b027e03e7114f5b9461d411f3e6a29b9dbb1790e4bf47177f307"
     },
     {
       "version": 1,
@@ -143,7 +143,7 @@
       "output_count": 2,
       "public_input_count": 19,
       "file": "drc20-phoenix-v1-burn-3x2.vd",
-      "verifier_data_hash": "7dd600a10c4cdcd938d6cf208ad74d420a0de5900120f7f35028a228b5a2276a"
+      "verifier_data_hash": "3c4fd4cc57bda5872fb90981a2094e102ff02730b6536abede4574d48e216e1e"
     },
     {
       "version": 1,
@@ -152,7 +152,7 @@
       "output_count": 0,
       "public_input_count": 18,
       "file": "drc20-phoenix-v1-burn-4x0.vd",
-      "verifier_data_hash": "33f77f1511aa07ea543febf1d06011cad65a6afcb1d39063ad9b2bdeeaaa995d"
+      "verifier_data_hash": "30a7ad094e91a9c8be0bb82c67d826189b6896c371398b2da544c6ac58bbba17"
     },
     {
       "version": 1,
@@ -161,7 +161,7 @@
       "output_count": 1,
       "public_input_count": 19,
       "file": "drc20-phoenix-v1-burn-4x1.vd",
-      "verifier_data_hash": "9aedd3bf75475c6df90d3e079df2c0b09dfed5f417a275cfb188602bdcc0b366"
+      "verifier_data_hash": "0e95181746c8cc07b3f4caa65b246e3213982b1b4cc67ca659a05d2710fc1724"
     },
     {
       "version": 1,
@@ -170,7 +170,7 @@
       "output_count": 2,
       "public_input_count": 20,
       "file": "drc20-phoenix-v1-burn-4x2.vd",
-      "verifier_data_hash": "4533f6fc45cb5a54dc0071b6fe10c5436d83a008764767240cdaacaf266f5a39"
+      "verifier_data_hash": "c525508663f0b6aa6918a5463abdb939ad58662a01428853dced73cbfca91d38"
     }
   ]
 }

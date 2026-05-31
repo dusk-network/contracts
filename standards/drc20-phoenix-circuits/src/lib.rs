@@ -27,10 +27,10 @@ use dusk_poseidon::{Domain, HashGadget};
 /// Transcript label for DRC20Phoenix circuits.
 pub const TRANSCRIPT_LABEL: &[u8] = b"DRC20Phoenix.private_asset.v1";
 
-/// V1 Merkle height used by the development verifier artifacts.
+/// V1 Merkle height used by the verifier artifacts.
 ///
-/// Production deployments should pin the audited height and CRS in their
-/// verifier manifest. The small default keeps native proof tests tractable.
+/// This mirrors the standards crate constant so the circuit path length and
+/// contract opening path length stay in lockstep.
 pub const DEV_ARTIFACT_TREE_HEIGHT: usize = DRC20_PHOENIX_TREE_HEIGHT;
 
 /// Metadata for one supported fixed-arity circuit.
@@ -705,8 +705,13 @@ mod tests {
             poseidon(b"DRC20Phoenix.merkle_pair.v1", &[sibling_1, root_0]);
         let root_2 =
             poseidon(b"DRC20Phoenix.merkle_pair.v1", &[root_1, sibling_2]);
-        let root =
+        let root_3 =
             poseidon(b"DRC20Phoenix.merkle_pair.v1", &[sibling_3, root_2]);
+        let defaults = default_subtree_roots();
+        let mut root = root_3;
+        for default in defaults.iter().take(HEIGHT).skip(4) {
+            root = poseidon(b"DRC20Phoenix.merkle_pair.v1", &[root, *default]);
+        }
         let nf = nullifier(asset_id, spend_secret, leaf);
 
         let out_owner = BlsScalar::from(101);
@@ -737,13 +742,20 @@ mod tests {
                 value_blinder,
                 nonce,
                 payload_hash,
-                path: [sibling_0, sibling_1, sibling_2, sibling_3],
-                path_is_left: [
-                    BlsScalar::zero(),
-                    BlsScalar::one(),
-                    BlsScalar::zero(),
-                    BlsScalar::one(),
-                ],
+                path: {
+                    let mut path = defaults;
+                    path[0] = sibling_0;
+                    path[1] = sibling_1;
+                    path[2] = sibling_2;
+                    path[3] = sibling_3;
+                    path
+                },
+                path_is_left: {
+                    let mut path_is_left = [BlsScalar::zero(); HEIGHT];
+                    path_is_left[1] = BlsScalar::one();
+                    path_is_left[3] = BlsScalar::one();
+                    path_is_left
+                },
             }],
             outputs: [OutputNoteWitness {
                 owner_commitment: out_owner,
@@ -764,6 +776,17 @@ mod tests {
         let mut bad_public_inputs = public_inputs;
         bad_public_inputs[9] = BlsScalar::from(999);
         assert!(verifier.verify(&proof, &bad_public_inputs).is_err());
+    }
+
+    fn default_subtree_roots() -> [BlsScalar; HEIGHT] {
+        let mut roots = [BlsScalar::zero(); HEIGHT];
+        roots[0] = domain_scalar(b"DRC20Phoenix.empty_leaf.v1");
+        for height in 1..HEIGHT {
+            let previous = roots[height - 1];
+            roots[height] =
+                poseidon(b"DRC20Phoenix.merkle_pair.v1", &[previous, previous]);
+        }
+        roots
     }
 
     fn standard_inputs(

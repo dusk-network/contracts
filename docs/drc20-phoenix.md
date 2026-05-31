@@ -190,6 +190,10 @@ These artifacts are pinned by hash and generated from the official Dusk CRS
 They still require circuit and artifact audit before mainnet use. There is no
 permissive production fallback.
 
+The v1 artifact tree height is `23`, giving `8,388,608` note slots. That target
+is chosen to keep the append-only note/nullifier state in the right order of
+magnitude for a 3 GB storage budget with the current note representation.
+
 ## V1 Arity Matrix
 
 The v1 verifier set is deliberately small and fixed:

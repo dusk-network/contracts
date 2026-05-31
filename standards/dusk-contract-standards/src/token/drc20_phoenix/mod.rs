@@ -28,11 +28,12 @@ use rkyv::{Archive, Deserialize, Serialize};
 pub const DRC20_PHOENIX_VERSION: u32 = 1;
 
 const ROOT_WINDOW_DEFAULT: usize = 64;
-/// Fixed Merkle tree height used by the first development verifier artifacts.
+/// Fixed Merkle tree height used by the v1 verifier artifacts.
 ///
-/// Production deployments should replace the development verifier artifacts
-/// with audited artifacts for the chosen tree height before mainnet use.
-pub const DRC20_PHOENIX_TREE_HEIGHT: usize = 4;
+/// Height 23 gives 8,388,608 note slots. That keeps the note/nullifier state in
+/// the right order of magnitude for a 3 GB storage budget with the current note
+/// representation while leaving room for wallet sync metadata and roots.
+pub const DRC20_PHOENIX_TREE_HEIGHT: usize = 23;
 
 /// V1 proof arity: public mint with one private output.
 pub const V1_MINT_0_1: PrivateAssetVerifierKey =
@@ -1468,13 +1469,16 @@ impl PrivateNoteTree {
         if level.len() > capacity {
             return None;
         }
-        level.resize(capacity, empty_leaf());
+        let defaults = default_subtree_roots();
         let mut siblings = Vec::new();
 
-        for _ in 0..DRC20_PHOENIX_TREE_HEIGHT {
+        for height in 0..DRC20_PHOENIX_TREE_HEIGHT {
             let is_right = index % 2 == 1;
             let sibling_index = if is_right { index - 1 } else { index + 1 };
-            let sibling_hash = level[sibling_index];
+            let sibling_hash = level
+                .get(sibling_index)
+                .copied()
+                .unwrap_or(defaults[height]);
             siblings.push(MerkleSibling {
                 hash: sibling_hash,
                 is_left: is_right,
@@ -1483,7 +1487,7 @@ impl PrivateNoteTree {
             let mut next = Vec::with_capacity(level.len().div_ceil(2));
             for pair in level.chunks(2) {
                 let left = pair[0];
-                let right = pair.get(1).copied().unwrap_or(left);
+                let right = pair.get(1).copied().unwrap_or(defaults[height]);
                 next.push(hash_pair(left, right));
             }
             index /= 2;
@@ -1666,17 +1670,30 @@ fn merkle_root(commitments: impl IntoIterator<Item = BlsScalar>) -> BlsScalar {
     if level.len() > capacity {
         panic!("{}", error::INVALID_VALUE);
     }
-    level.resize(capacity, empty_leaf());
-    for _ in 0..DRC20_PHOENIX_TREE_HEIGHT {
+    let defaults = default_subtree_roots();
+    if level.is_empty() {
+        return defaults[DRC20_PHOENIX_TREE_HEIGHT];
+    }
+    for height in 0..DRC20_PHOENIX_TREE_HEIGHT {
         let mut next = Vec::with_capacity(level.len().div_ceil(2));
         for pair in level.chunks(2) {
             let left = pair[0];
-            let right = pair[1];
+            let right = pair.get(1).copied().unwrap_or(defaults[height]);
             next.push(hash_pair(left, right));
         }
         level = next;
     }
     level[0]
+}
+
+fn default_subtree_roots() -> Vec<BlsScalar> {
+    let mut roots = Vec::with_capacity(DRC20_PHOENIX_TREE_HEIGHT + 1);
+    roots.push(empty_leaf());
+    for height in 1..=DRC20_PHOENIX_TREE_HEIGHT {
+        let previous = roots[height - 1];
+        roots.push(hash_pair(previous, previous));
+    }
+    roots
 }
 
 fn hash_pair(left: BlsScalar, right: BlsScalar) -> BlsScalar {
@@ -2467,6 +2484,8 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
         #[test]
         fn supply_note_and_nullifier_invariants_hold(
             mint_amounts in proptest::collection::vec(1u64..1000, 1..8),

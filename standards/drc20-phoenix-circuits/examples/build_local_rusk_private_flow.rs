@@ -362,6 +362,7 @@ fn build(args: &[String]) {
         9,
         905,
         6,
+        follow_up_transfer_count(),
     );
 
     let pause_args = ADMIN;
@@ -430,6 +431,7 @@ fn build_follow_up_transfers(
     first_seed: u64,
     first_memo: u64,
     first_block_height: u64,
+    max_transfers: usize,
 ) -> Vec<PrivateTransfer> {
     let capacity = 1u64 << DRC20_PHOENIX_TREE_HEIGHT;
     let mut next_seed = first_seed;
@@ -437,7 +439,7 @@ fn build_follow_up_transfers(
     let mut next_block_height = first_block_height;
     let mut transfers = Vec::new();
 
-    while token.num_notes() + 2 <= capacity {
+    while transfers.len() < max_transfers && token.num_notes() + 2 <= capacity {
         let Some(input) = spendable.pop_front() else {
             break;
         };
@@ -476,6 +478,13 @@ fn build_follow_up_transfers(
     }
 
     transfers
+}
+
+fn follow_up_transfer_count() -> usize {
+    env::var("DRC20_PHOENIX_FOLLOW_UP_TRANSFERS")
+        .ok()
+        .map(|value| value.parse().expect("usize follow-up transfer count"))
+        .unwrap_or(4)
 }
 
 #[allow(clippy::too_many_arguments)]
