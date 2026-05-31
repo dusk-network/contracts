@@ -275,7 +275,8 @@ fn build(args: &[String]) {
     };
     token.transfer_private_with_verifier(extra_transfer.clone(), &DevVerifier);
 
-    let second_extra_transfer_notes = [note(asset_id, 7, 10), note(asset_id, 8, 25)];
+    let second_extra_transfer_notes =
+        [note(asset_id, 7, 10), note(asset_id, 8, 25)];
     let second_extra_transfer_outputs = second_extra_transfer_notes
         .iter()
         .map(|witness| witness.note.clone())
@@ -320,6 +321,74 @@ fn build(args: &[String]) {
         memo_hash: scalar(904),
         block_height: 5,
     };
+    token.transfer_private_with_verifier(
+        second_extra_transfer.clone(),
+        &DevVerifier,
+    );
+
+    let third_extra_transfer_notes =
+        [note(asset_id, 9, 5), note(asset_id, 10, 10)];
+    let third_extra_transfer = transfer_call(
+        &mut token,
+        &pp,
+        &mut rng,
+        chain_id,
+        contract_id,
+        asset_id,
+        &extra_transfer_notes[0],
+        4,
+        third_extra_transfer_notes.clone(),
+        scalar(905),
+        6,
+    );
+
+    let fourth_extra_transfer_notes =
+        [note(asset_id, 11, 12), note(asset_id, 12, 13)];
+    let fourth_extra_transfer = transfer_call(
+        &mut token,
+        &pp,
+        &mut rng,
+        chain_id,
+        contract_id,
+        asset_id,
+        &extra_transfer_notes[1],
+        5,
+        fourth_extra_transfer_notes.clone(),
+        scalar(906),
+        7,
+    );
+
+    let fifth_extra_transfer_notes =
+        [note(asset_id, 13, 4), note(asset_id, 14, 6)];
+    let fifth_extra_transfer = transfer_call(
+        &mut token,
+        &pp,
+        &mut rng,
+        chain_id,
+        contract_id,
+        asset_id,
+        &second_extra_transfer_notes[0],
+        6,
+        fifth_extra_transfer_notes.clone(),
+        scalar(907),
+        8,
+    );
+
+    let sixth_extra_transfer_notes =
+        [note(asset_id, 15, 20), note(asset_id, 16, 5)];
+    let sixth_extra_transfer = transfer_call(
+        &mut token,
+        &pp,
+        &mut rng,
+        chain_id,
+        contract_id,
+        asset_id,
+        &second_extra_transfer_notes[1],
+        7,
+        sixth_extra_transfer_notes,
+        scalar(908),
+        9,
+    );
 
     let pause_args = ADMIN;
     let unpause_args = ADMIN;
@@ -334,6 +403,22 @@ fn build(args: &[String]) {
         "second_extra_transfer_args={}",
         encode(&second_extra_transfer)
     );
+    println!(
+        "third_extra_transfer_args={}",
+        encode(&third_extra_transfer)
+    );
+    println!(
+        "fourth_extra_transfer_args={}",
+        encode(&fourth_extra_transfer)
+    );
+    println!(
+        "fifth_extra_transfer_args={}",
+        encode(&fifth_extra_transfer)
+    );
+    println!(
+        "sixth_extra_transfer_args={}",
+        encode(&sixth_extra_transfer)
+    );
     println!("pause_args={}", encode(&pause_args));
     println!("unpause_args={}", encode(&unpause_args));
     println!("expected_asset_id={}", hex(&asset_id.to_bytes()));
@@ -345,6 +430,66 @@ fn build(args: &[String]) {
     println!("expected_num_notes_after_burn=4");
     println!("expected_num_notes_after_extra_transfer=6");
     println!("expected_num_notes_after_second_extra_transfer=8");
+    println!("expected_num_notes_after_third_extra_transfer=10");
+    println!("expected_num_notes_after_fourth_extra_transfer=12");
+    println!("expected_num_notes_after_fifth_extra_transfer=14");
+    println!("expected_num_notes_after_sixth_extra_transfer=16");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn transfer_call(
+    token: &mut Drc20Phoenix,
+    pp: &PublicParameters,
+    rng: &mut StdRng,
+    chain_id: u8,
+    contract_id: ContractId,
+    asset_id: BlsScalar,
+    input: &NoteWitness,
+    input_position: u64,
+    outputs: [NoteWitness; 2],
+    memo_hash: BlsScalar,
+    block_height: u64,
+) -> PrivateTransfer {
+    let output_notes = outputs
+        .iter()
+        .map(|witness| witness.note.clone())
+        .collect::<Vec<_>>();
+    let root = token.root();
+    let nullifier =
+        dusk_contract_standards::token::drc20_phoenix::compute_nullifier(
+            asset_id,
+            input.spend_secret,
+            input.note.commitment,
+        );
+    let public_inputs =
+        token.build_public_inputs(PrivateAssetPublicInputBuilder {
+            chain_id,
+            contract_id,
+            asset_id,
+            mode: PrivateAssetCircuitMode::Transfer,
+            root,
+            nullifiers: &[nullifier],
+            outputs: &output_notes,
+            public_mint_amount: 0,
+            public_burn_amount: 0,
+            memo_hash,
+        });
+    let opening = token.opening(input_position).unwrap();
+    let proof =
+        transfer_proof(pp, rng, &public_inputs, input, &opening, &outputs);
+    let transfer = PrivateTransfer {
+        chain_id,
+        contract_id,
+        asset_id,
+        root,
+        nullifiers: vec![nullifier],
+        outputs: output_notes,
+        proof,
+        memo_hash,
+        block_height,
+    };
+    token.transfer_private_with_verifier(transfer.clone(), &DevVerifier);
+    transfer
 }
 
 fn mint_proof(
