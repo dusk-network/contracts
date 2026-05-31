@@ -23,7 +23,7 @@ use dusk_contract_standards::token::drc20_phoenix::{
 };
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
-use dusk_plonk::prelude::PublicParameters;
+use dusk_plonk::prelude::{Prover, PublicParameters, Verifier};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use sha2::{Digest, Sha256};
@@ -106,6 +106,12 @@ fn build(args: &[String]) {
     token.init(init.clone());
 
     let pp = public_parameters(crs_arg);
+    let (mint_prover, mint_verifier) =
+        compile::<DEV_ARTIFACT_TREE_HEIGHT, 0, 2>(&pp).unwrap();
+    let (transfer_prover, transfer_verifier) =
+        compile::<DEV_ARTIFACT_TREE_HEIGHT, 1, 2>(&pp).unwrap();
+    let (burn_prover, burn_verifier) =
+        compile::<DEV_ARTIFACT_TREE_HEIGHT, 1, 0>(&pp).unwrap();
     let mut rng = StdRng::seed_from_u64(11);
     let asset_id = token.asset_id();
 
@@ -127,7 +133,13 @@ fn build(args: &[String]) {
             public_burn_amount: 0,
             memo_hash: scalar(900),
         });
-    let mint_proof = mint_proof(&pp, &mut rng, &mint_inputs, &mint_notes);
+    let mint_proof = mint_proof(
+        &mint_prover,
+        &mint_verifier,
+        &mut rng,
+        &mint_inputs,
+        &mint_notes,
+    );
     let mint = PrivateMint {
         caller: ADMIN,
         chain_id,
@@ -168,7 +180,8 @@ fn build(args: &[String]) {
         });
     let transfer_opening = token.opening(0).unwrap();
     let initial_transfer_proof = transfer_proof(
-        &pp,
+        &transfer_prover,
+        &transfer_verifier,
         &mut rng,
         &transfer_inputs,
         &mint_notes[0],
@@ -215,7 +228,8 @@ fn build(args: &[String]) {
         });
     let burn_opening = token.opening(2).unwrap();
     let burn_proof = burn_proof(
-        &pp,
+        &burn_prover,
+        &burn_verifier,
         &mut rng,
         &burn_inputs,
         &transfer_notes[0],
@@ -262,7 +276,8 @@ fn build(args: &[String]) {
         });
     let extra_transfer_opening = token.opening(1).unwrap();
     let extra_transfer_proof = transfer_proof(
-        &pp,
+        &transfer_prover,
+        &transfer_verifier,
         &mut rng,
         &extra_transfer_inputs,
         &mint_notes[1],
@@ -310,7 +325,8 @@ fn build(args: &[String]) {
         });
     let second_extra_transfer_opening = token.opening(3).unwrap();
     let second_extra_transfer_proof = transfer_proof(
-        &pp,
+        &transfer_prover,
+        &transfer_verifier,
         &mut rng,
         &second_extra_transfer_inputs,
         &transfer_notes[1],
@@ -353,7 +369,8 @@ fn build(args: &[String]) {
     ]);
     let follow_up_transfers = build_follow_up_transfers(
         &mut token,
-        &pp,
+        &transfer_prover,
+        &transfer_verifier,
         &mut rng,
         chain_id,
         contract_id,
@@ -422,7 +439,8 @@ fn build(args: &[String]) {
 #[allow(clippy::too_many_arguments)]
 fn build_follow_up_transfers(
     token: &mut Drc20Phoenix,
-    pp: &PublicParameters,
+    transfer_prover: &Prover,
+    transfer_verifier: &Verifier,
     rng: &mut StdRng,
     chain_id: u8,
     contract_id: ContractId,
@@ -452,7 +470,8 @@ fn build_follow_up_transfers(
         let first_output_position = token.num_notes();
         let transfer = transfer_call(
             token,
-            pp,
+            transfer_prover,
+            transfer_verifier,
             rng,
             chain_id,
             contract_id,
@@ -490,7 +509,8 @@ fn follow_up_transfer_count() -> usize {
 #[allow(clippy::too_many_arguments)]
 fn transfer_call(
     token: &mut Drc20Phoenix,
-    pp: &PublicParameters,
+    transfer_prover: &Prover,
+    transfer_verifier: &Verifier,
     rng: &mut StdRng,
     chain_id: u8,
     contract_id: ContractId,
@@ -526,8 +546,15 @@ fn transfer_call(
             memo_hash,
         });
     let opening = token.opening(input_position).unwrap();
-    let proof =
-        transfer_proof(pp, rng, &public_inputs, input, &opening, &outputs);
+    let proof = transfer_proof(
+        transfer_prover,
+        transfer_verifier,
+        rng,
+        &public_inputs,
+        input,
+        &opening,
+        &outputs,
+    );
     let transfer = PrivateTransfer {
         chain_id,
         contract_id,
@@ -544,7 +571,8 @@ fn transfer_call(
 }
 
 fn mint_proof(
-    pp: &PublicParameters,
+    prover: &Prover,
+    verifier: &Verifier,
     rng: &mut StdRng,
     inputs: &dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     outputs: &[NoteWitness; 2],
@@ -555,11 +583,12 @@ fn mint_proof(
         inputs: [],
         outputs: [output_witness(&outputs[0]), output_witness(&outputs[1])],
     };
-    prove_for::<0, 2>(pp, rng, inputs.clone(), circuit)
+    prove_for::<0, 2>(prover, verifier, rng, inputs.clone(), circuit)
 }
 
 fn transfer_proof(
-    pp: &PublicParameters,
+    prover: &Prover,
+    verifier: &Verifier,
     rng: &mut StdRng,
     inputs: &dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     input: &NoteWitness,
@@ -572,11 +601,12 @@ fn transfer_proof(
         inputs: [input_witness(input, opening)],
         outputs: [output_witness(&outputs[0]), output_witness(&outputs[1])],
     };
-    prove_for::<1, 2>(pp, rng, inputs.clone(), circuit)
+    prove_for::<1, 2>(prover, verifier, rng, inputs.clone(), circuit)
 }
 
 fn burn_proof(
-    pp: &PublicParameters,
+    prover: &Prover,
+    verifier: &Verifier,
     rng: &mut StdRng,
     inputs: &dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     input: &NoteWitness,
@@ -588,18 +618,17 @@ fn burn_proof(
         inputs: [input_witness(input, opening)],
         outputs: [],
     };
-    prove_for::<1, 0>(pp, rng, inputs.clone(), circuit)
+    prove_for::<1, 0>(prover, verifier, rng, inputs.clone(), circuit)
 }
 
 fn prove_for<const INPUTS: usize, const OUTPUTS: usize>(
-    pp: &PublicParameters,
+    prover: &Prover,
+    verifier: &Verifier,
     rng: &mut StdRng,
     public_inputs: dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     circuit: Drc20PhoenixCircuit<DEV_ARTIFACT_TREE_HEIGHT, INPUTS, OUTPUTS>,
 ) -> PrivateAssetProof {
-    let (prover, verifier) =
-        compile::<DEV_ARTIFACT_TREE_HEIGHT, INPUTS, OUTPUTS>(pp).unwrap();
-    let (proof, scalars) = prove(&prover, rng, &circuit).unwrap();
+    let (proof, scalars) = prove(prover, rng, &circuit).unwrap();
     verifier.verify(&proof, &scalars).unwrap();
     PrivateAssetProof {
         proof: proof.to_bytes().to_vec(),
