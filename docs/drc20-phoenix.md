@@ -194,6 +194,98 @@ The v1 artifact tree height is `23`, giving `8,388,608` note slots. That target
 is chosen to keep the append-only note/nullifier state in the right order of
 magnitude for a 3 GB storage budget with the current note representation.
 
+## Proving Performance
+
+Use the dedicated benchmark to measure proving rather than the deployment
+smoke scripts:
+
+```bash
+cargo +nightly-2026-02-27 run --release \
+  -p drc20-phoenix-circuits \
+  --example benchmark_drc20_phoenix_proving
+```
+
+The benchmark measures CRS loading, circuit compilation, witness and public
+input construction, raw proving, verifier self-check, proof serialization,
+proof size, verifier-data size, constraints, and process high-water memory.
+
+Observed release-mode results on May 31, 2026 using the official Dusk CRS
+`~/.dusk/rusk/devnet-piecrust.crs`:
+
+```text
+CRS load: 9.8s
+Process peak RSS for full matrix: 1,328,556 KB
+```
+
+| height | proof | arity | constraints | compile | prove | verify | proof bytes |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 17 | mint | 0x2 | 7,963 | 1.5s | 0.6s | 0.005s | 1,008 |
+| 17 | transfer | 1x2 | 31,921 | 6.0s | 2.0s | 0.004s | 1,008 |
+| 17 | burn | 1x0 | 23,979 | 5.8s | 2.0s | 0.006s | 1,008 |
+| 17 | transfer | 4x2 | 103,795 | 24.3s | 8.3s | 0.004s | 1,008 |
+| 20 | mint | 0x2 | 7,963 | 1.5s | 0.5s | 0.008s | 1,008 |
+| 20 | transfer | 1x2 | 34,924 | 11.8s | 4.0s | 0.004s | 1,008 |
+| 20 | burn | 1x0 | 26,982 | 5.8s | 2.0s | 0.006s | 1,008 |
+| 20 | transfer | 4x2 | 115,807 | 24.4s | 8.5s | 0.004s | 1,008 |
+| 23 | mint | 0x2 | 7,963 | 1.5s | 0.5s | 0.007s | 1,008 |
+| 23 | transfer | 1x2 | 37,927 | 11.8s | 4.1s | 0.004s | 1,008 |
+| 23 | burn | 1x0 | 29,985 | 5.8s | 2.0s | 0.006s | 1,008 |
+| 23 | transfer | 4x2 | 127,819 | 24.1s | 8.7s | 0.009s | 1,008 |
+
+The most important result is that optimized raw proving is much faster than
+the earlier end-to-end debug measurements. Height 23 adds about 6,006
+constraints over height 17 for 1-input transfers and about 24,024 constraints
+for 4-input transfers. That is meaningful but not enough to explain the prior
+25-35 second per-transfer estimate by itself.
+
+The local and testnet smoke scripts now run the proof-building helper in
+release mode by default. Override with:
+
+```bash
+DRC20_PHOENIX_CARGO_RUN_PROFILE= ./scripts/drc20-phoenix-submit-follow-up-transfers.sh
+```
+
+only when intentionally debugging helper code.
+
+### Native Phoenix Comparison
+
+Native Phoenix currently uses tree depth `17`. The available `rusk-prover`
+fixture is a native 4-input/2-output transfer proof and uses cached prover keys.
+A warm release-mode run of:
+
+```bash
+cargo test --release -p rusk-prover test_prove_tx_circuit -- --nocapture
+```
+
+completed in `43.05s` wall clock with peak RSS around `1.41 GB`. This includes
+loading cached native prover data and running the test harness; it is not a raw
+`prove()` timing and is not apples-to-apples with the DRC20Phoenix benchmark.
+
+The closest DRC20Phoenix arity row is height-17 transfer `4x2`, which compiled
+in `24.3s` and proved in `8.3s`, with peak process RSS for the full benchmark
+matrix around `1.33 GB`. The circuit statements differ: native Phoenix includes
+native DUSK fee/deposit/refund semantics, while DRC20Phoenix includes custom
+asset id, contract id, mode, public mint/burn, and token-domain separation.
+
+### Tree-Size Direction
+
+Height 23 remains a reasonable v1 default for the current storage target. If
+wallet-grade proving needs to go lower than roughly 4 seconds for 1-input
+transfers or 9 seconds for 4-input transfers, the next work should focus on
+prover-key caching/distribution, wallet-side persistent proving contexts, and
+circuit shape review before reducing the tree height.
+
+Longer-term alternatives remain open:
+
+- epoch trees with migration between epochs
+- append-only forests with multiple retained roots
+- token-instance sharding
+- rolling note trees with explicit migration notes
+
+Those designs trade simpler wallet scanning and proof statements for lower
+per-proof Merkle depth. They should be handled as a separate design change, not
+as an unreviewed tweak to the current circuit.
+
 ## V1 Arity Matrix
 
 The v1 verifier set is deliberately small and fixed:
@@ -406,7 +498,8 @@ The smoke preflight is:
 ```
 
 It builds the standards crate, Forge reference contract, data-driver, circuit
-tests, Dusk-CRS verifier manifest, and client payload example. By default,
+tests, Dusk-CRS verifier manifest, and client payload example. Proof-building
+helpers run in release mode by default. By default,
 the script refuses to submit RPC transactions unless explicitly forced:
 
 ```bash

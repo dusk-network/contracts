@@ -788,6 +788,60 @@ as a free upgrade because the serialized note log, encrypted payloads,
 nullifier log, roots, and indexer copies can push total storage beyond that
 budget.
 
+## Proving Performance
+
+The branch includes a reproducible benchmark:
+
+```bash
+cargo +nightly-2026-02-27 run --release \
+  -p drc20-phoenix-circuits \
+  --example benchmark_drc20_phoenix_proving
+```
+
+It splits CRS loading, circuit compilation, witness and public-input
+construction, raw `prove()`, verifier self-check, serialization, constraints,
+proof size, verifier-data size, and process high-water RSS.
+
+Release-mode measurements on May 31, 2026 using the official Dusk CRS show:
+
+```text
+CRS load: ~9.8s
+height 23 mint 0x2 proof: ~0.5s
+height 23 transfer 1x2 proof: ~4.1s
+height 23 burn 1x0 proof: ~2.0s
+height 23 transfer 4x2 proof: ~8.7s
+```
+
+Height `23` adds Merkle constraints, but it is not the whole performance story:
+
+```text
+height 17 transfer 1x2: 31,921 constraints, ~2.0s prove
+height 20 transfer 1x2: 34,924 constraints, ~4.0s prove
+height 23 transfer 1x2: 37,927 constraints, ~4.1s prove
+
+height 17 transfer 4x2: 103,795 constraints, ~8.3s prove
+height 23 transfer 4x2: 127,819 constraints, ~8.7s prove
+```
+
+The earlier 25-35 second per-transfer estimates came from end-to-end debug-mode
+helper runs and repeated setup/compile work. They were not representative of
+optimized raw proving. The smoke and repeat-transfer scripts now default to
+release-mode helper execution.
+
+Native Phoenix uses depth `17`. The available `rusk-prover` fixture is a
+4-input/2-output native transfer using cached prover keys and native DUSK
+fee/deposit/refund semantics. A warm release-mode `rusk-prover` test completed
+in `43.05s` wall clock with about `1.41 GB` peak RSS, but that includes test
+harness and cached prover loading rather than an isolated raw `prove()` timing.
+The comparison is therefore useful context, not a strict circuit-to-circuit
+benchmark.
+
+The v1 direction remains height `23` with wallet-side persistent proving
+contexts and audited prover-key distribution. Epoch trees, append-only forests,
+sharded token instances, or rolling migration trees may reduce per-proof Merkle
+depth, but they add root-selection, migration, and wallet-scanning complexity
+and should be treated as v2 architecture.
+
 ## Testing Plan
 
 ### Positive Tests

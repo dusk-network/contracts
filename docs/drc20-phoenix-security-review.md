@@ -120,6 +120,23 @@ burn: 1..4 inputs / 0..2 outputs
 Residual risk: the Forge reference should still set product limits for proof
 size and memo size.
 
+### Proving Performance
+
+The benchmarked release-mode proof path is practical for a prototype wallet:
+height-23 `1x2` transfers prove in about `4.1s`, and height-23 `4x2`
+transfers prove in about `8.7s` on the benchmark machine. This assumes the
+wallet uses optimized release builds and does not repeatedly recompile circuits
+inside a transaction flow.
+
+Security-relevant conclusion: no circuit statement was weakened for the
+performance pass. Asset/domain replay protection, Merkle inclusion, nullifier
+correctness, note commitment correctness, and value conservation remain in the
+circuit.
+
+Residual risk: wallets should cache or ship audited prover artifacts and avoid
+debug-mode proof generation. Remote proving remains a privacy-sensitive design
+choice because witnesses expose private note values and spend secrets.
+
 ### Wallet Scanning Privacy
 
 The docs recommend append-log sync over targeted `existing_nullifiers` queries
