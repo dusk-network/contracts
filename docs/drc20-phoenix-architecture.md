@@ -842,6 +842,41 @@ sharded token instances, or rolling migration trees may reduce per-proof Merkle
 depth, but they add root-selection, migration, and wallet-scanning complexity
 and should be treated as v2 architecture.
 
+### Wallet Proving Context
+
+The circuit crate now exposes `Drc20PhoenixProvingContext`. It is the
+productionizable wallet-side boundary:
+
+```text
+load CRS once
+load or compile arity prover once
+reuse Prover/Verifier for many proofs
+optionally persist prover/verifier artifacts in a local cache
+```
+
+The cache is manifest-backed per arity and validates format, version, mode,
+input/output counts, tree height, CRS hash, transcript label, and prover/
+verifier hashes. The cache lives under `target/` or a user-selected wallet
+cache directory. It is not committed because a single height-23 transfer `1x2`
+prover artifact is about `323 MB`.
+
+The repeated-transfer benchmark shows the intended wallet behavior. With a
+warm transfer `1x2` cache:
+
+```text
+50 height-23 transfers
+CRS load: ~9.6s
+cached prover load: ~3.9s
+median proof: ~4.0s
+p95 proof: ~4.3s
+peak RSS: ~715 MB
+```
+
+This means the remaining wallet-grade work is no longer circuit compilation in
+the transaction path. It is artifact distribution, cache management, UI
+progress reporting, and deciding whether remote proving is acceptable for any
+wallet mode given the witness privacy trade-off.
+
 ## Testing Plan
 
 ### Positive Tests

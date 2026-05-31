@@ -247,6 +247,98 @@ DRC20_PHOENIX_CARGO_RUN_PROFILE= ./scripts/drc20-phoenix-submit-follow-up-transf
 
 only when intentionally debugging helper code.
 
+### Persistent Proving Context And Cache
+
+Wallet/client code should use `Drc20PhoenixProvingContext` from:
+
+```rust
+drc20_phoenix_circuits::proving
+```
+
+The context owns the CRS public parameters, lazily loads each mode/arity once,
+and reuses the compiled or cached `Prover`/`Verifier` handles for repeated
+mint, transfer, and burn proofs. This is the expected wallet integration shape:
+
+1. load the Dusk CRS once at wallet startup or first private-token use
+2. create a `Drc20PhoenixProvingContext`
+3. load the needed arity once, typically transfer `1x2`
+4. generate many proofs through the same context
+5. keep the context alive while the wallet is building a batch
+
+The context supports a local prover cache through `ProverCacheConfig`. Cached
+entries are validated against:
+
+- DRC20Phoenix cache format version
+- circuit version/mode/input/output arity
+- tree height
+- CRS SHA-256
+- transcript label
+- prover artifact SHA-256
+- verifier artifact SHA-256
+
+The cache is intentionally local. Prover artifacts are large; the observed
+height-23 transfer `1x2` prover artifact is about `323 MB`, while the verifier
+artifact is about `1.4 KB`. Committing the full v1 prover set would be
+impractical. Wallets should generate or download audited prover artifacts into
+a user cache and fail closed on any manifest/hash mismatch.
+
+Generate a cache entry with:
+
+```bash
+cargo +nightly-2026-02-27 run --release \
+  -p drc20-phoenix-circuits \
+  --example generate_prover_cache -- \
+  --cache-dir target/drc20-phoenix-prover-cache \
+  --only transfer-1x2
+```
+
+Generate the full v1 cache by omitting `--only`, but expect this to take
+substantially longer and use significant disk space.
+
+The smoke and testnet helper scripts default to:
+
+```text
+DRC20_PHOENIX_PROVER_CACHE_DIR=target/drc20-phoenix-prover-cache
+DRC20_PHOENIX_PROVING_TIMINGS=1
+```
+
+Set `DRC20_PHOENIX_FORCE_PROVER_CACHE_REBUILD=1` to overwrite local artifacts.
+
+### Repeated Transfer Benchmark
+
+Run:
+
+```bash
+cargo +nightly-2026-02-27 run --release \
+  -p drc20-phoenix-circuits \
+  --example benchmark_drc20_phoenix_repeated_transfers -- \
+  --transfers 50
+```
+
+With `DRC20_PHOENIX_PROVER_CACHE_DIR` pointing at a warm transfer `1x2` cache,
+the observed May 31, 2026 result was:
+
+```text
+transfers=50
+tree_height=23
+crs_load_ms=9553
+context_setup_ms=3964
+artifact source=Cache
+artifact load_ms=3873
+prover_bytes=323031736
+first_proof_ms=3920
+median_proof_ms=4017
+p95_proof_ms=4333
+total_proof_ms=205332
+total_wall_ms=218989
+notes_generated=100
+hwm_kb=715172
+```
+
+This is the current wallet-grade baseline: repeated private transfers amortize
+setup and settle at roughly `4.0s` median proving time for height-23 transfer
+`1x2`, with about `715 MB` peak RSS when using the cached prover path.
+
 ### Native Phoenix Comparison
 
 Native Phoenix currently uses tree depth `17`. The available `rusk-prover`
@@ -531,3 +623,34 @@ Observed local status on this branch:
   nullifiers, and mint while paused without changing the checked state
 - the smoke verifies note counts, minted supply, burned supply, net supply, and
   pause state through contract queries
+
+Latest local attempt after adding the prover cache:
+
+```text
+DRC20_PHOENIX_SKIP_BUILD=1 DRC20_PHOENIX_REAL_CIRCUIT=1 \
+  ./scripts/drc20-phoenix-local-rusk-private-smoke.sh
+```
+
+The helper generated real proof call arguments with the cached proving context
+active, but the local deployment did not land:
+
+```text
+Rusk error occurred: Unsupported operation
+expected version == 1
+```
+
+That is the current local-node blocker for this branch. The proof-generation
+side of the local flow is working; the failing step is the local
+`rusk-wallet`/node contract deployment path.
+
+Latest testnet follow-up against the height-23 contract:
+
+```text
+contract_id=396a1db75c1cc797b53b9be1964dfb552d373e9290587337e4e4c3b34bc59125
+tx=c69b9513525550e8b9f42699744855f30940d54e211bf1084ed9768c77903237
+num_notes: 48 -> 50
+minted_supply=100
+burned_supply=25
+net_supply=75
+submitted=1
+```

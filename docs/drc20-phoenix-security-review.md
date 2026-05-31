@@ -137,6 +137,12 @@ Residual risk: wallets should cache or ship audited prover artifacts and avoid
 debug-mode proof generation. Remote proving remains a privacy-sensitive design
 choice because witnesses expose private note values and spend secrets.
 
+The prover cache validates CRS hash, tree height, transcript label, arity, and
+artifact hashes before deserializing cached provers. This prevents accidental
+use of a stale cache after circuit, CRS, or tree-height changes. The cache is
+not a verifier trust root; the contract still verifies proofs with pinned
+verifier data.
+
 ### Wallet Scanning Privacy
 
 The docs recommend append-log sync over targeted `existing_nullifiers` queries
