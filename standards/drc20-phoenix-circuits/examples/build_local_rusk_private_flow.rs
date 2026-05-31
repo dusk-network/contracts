@@ -8,12 +8,13 @@ use std::collections::VecDeque;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use drc20_phoenix_circuits::{
-    compile, prove, Drc20PhoenixCircuit, FixedPublicInputs, InputNoteWitness,
-    OutputNoteWitness, DEV_ARTIFACT_TREE_HEIGHT,
+    proving::{Drc20PhoenixProvingContext, ProverCacheConfig},
+    Drc20PhoenixCircuit, FixedPublicInputs, InputNoteWitness, OutputNoteWitness,
+    DEV_ARTIFACT_TREE_HEIGHT,
 };
-use dusk_bytes::Serializable;
 use dusk_contract_standards::token::drc20_phoenix::{
     compute_owner_commitment, compute_value_commitment, encrypted_payload_hash,
     AdminId, Drc20Phoenix, Init, PrivateAssetCircuitMode, PrivateAssetNote,
@@ -23,7 +24,7 @@ use dusk_contract_standards::token::drc20_phoenix::{
 };
 use dusk_core::abi::ContractId;
 use dusk_core::BlsScalar;
-use dusk_plonk::prelude::{Prover, PublicParameters, Verifier};
+use dusk_plonk::prelude::PublicParameters;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use sha2::{Digest, Sha256};
@@ -105,13 +106,10 @@ fn build(args: &[String]) {
     };
     token.init(init.clone());
 
-    let pp = public_parameters(crs_arg);
-    let (mint_prover, mint_verifier) =
-        compile::<DEV_ARTIFACT_TREE_HEIGHT, 0, 2>(&pp).unwrap();
-    let (transfer_prover, transfer_verifier) =
-        compile::<DEV_ARTIFACT_TREE_HEIGHT, 1, 2>(&pp).unwrap();
-    let (burn_prover, burn_verifier) =
-        compile::<DEV_ARTIFACT_TREE_HEIGHT, 1, 0>(&pp).unwrap();
+    let context_start = Instant::now();
+    let (pp, crs_hash) = public_parameters(crs_arg);
+    let mut proving = proving_context(pp, crs_hash);
+    timing("proving_context_init_ms", context_start.elapsed().as_millis());
     let mut rng = StdRng::seed_from_u64(11);
     let asset_id = token.asset_id();
 
@@ -134,8 +132,7 @@ fn build(args: &[String]) {
             memo_hash: scalar(900),
         });
     let mint_proof = mint_proof(
-        &mint_prover,
-        &mint_verifier,
+        &mut proving,
         &mut rng,
         &mint_inputs,
         &mint_notes,
@@ -180,8 +177,7 @@ fn build(args: &[String]) {
         });
     let transfer_opening = token.opening(0).unwrap();
     let initial_transfer_proof = transfer_proof(
-        &transfer_prover,
-        &transfer_verifier,
+        &mut proving,
         &mut rng,
         &transfer_inputs,
         &mint_notes[0],
@@ -228,8 +224,7 @@ fn build(args: &[String]) {
         });
     let burn_opening = token.opening(2).unwrap();
     let burn_proof = burn_proof(
-        &burn_prover,
-        &burn_verifier,
+        &mut proving,
         &mut rng,
         &burn_inputs,
         &transfer_notes[0],
@@ -276,8 +271,7 @@ fn build(args: &[String]) {
         });
     let extra_transfer_opening = token.opening(1).unwrap();
     let extra_transfer_proof = transfer_proof(
-        &transfer_prover,
-        &transfer_verifier,
+        &mut proving,
         &mut rng,
         &extra_transfer_inputs,
         &mint_notes[1],
@@ -325,8 +319,7 @@ fn build(args: &[String]) {
         });
     let second_extra_transfer_opening = token.opening(3).unwrap();
     let second_extra_transfer_proof = transfer_proof(
-        &transfer_prover,
-        &transfer_verifier,
+        &mut proving,
         &mut rng,
         &second_extra_transfer_inputs,
         &transfer_notes[1],
@@ -369,8 +362,7 @@ fn build(args: &[String]) {
     ]);
     let follow_up_transfers = build_follow_up_transfers(
         &mut token,
-        &transfer_prover,
-        &transfer_verifier,
+        &mut proving,
         &mut rng,
         chain_id,
         contract_id,
@@ -439,8 +431,7 @@ fn build(args: &[String]) {
 #[allow(clippy::too_many_arguments)]
 fn build_follow_up_transfers(
     token: &mut Drc20Phoenix,
-    transfer_prover: &Prover,
-    transfer_verifier: &Verifier,
+    proving: &mut Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT>,
     rng: &mut StdRng,
     chain_id: u8,
     contract_id: ContractId,
@@ -470,8 +461,7 @@ fn build_follow_up_transfers(
         let first_output_position = token.num_notes();
         let transfer = transfer_call(
             token,
-            transfer_prover,
-            transfer_verifier,
+            proving,
             rng,
             chain_id,
             contract_id,
@@ -509,8 +499,7 @@ fn follow_up_transfer_count() -> usize {
 #[allow(clippy::too_many_arguments)]
 fn transfer_call(
     token: &mut Drc20Phoenix,
-    transfer_prover: &Prover,
-    transfer_verifier: &Verifier,
+    proving: &mut Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT>,
     rng: &mut StdRng,
     chain_id: u8,
     contract_id: ContractId,
@@ -547,8 +536,7 @@ fn transfer_call(
         });
     let opening = token.opening(input_position).unwrap();
     let proof = transfer_proof(
-        transfer_prover,
-        transfer_verifier,
+        proving,
         rng,
         &public_inputs,
         input,
@@ -571,8 +559,7 @@ fn transfer_call(
 }
 
 fn mint_proof(
-    prover: &Prover,
-    verifier: &Verifier,
+    proving: &mut Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT>,
     rng: &mut StdRng,
     inputs: &dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     outputs: &[NoteWitness; 2],
@@ -583,12 +570,11 @@ fn mint_proof(
         inputs: [],
         outputs: [output_witness(&outputs[0]), output_witness(&outputs[1])],
     };
-    prove_for::<0, 2>(prover, verifier, rng, inputs.clone(), circuit)
+    prove_for::<0, 2>(proving, rng, inputs.clone(), circuit)
 }
 
 fn transfer_proof(
-    prover: &Prover,
-    verifier: &Verifier,
+    proving: &mut Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT>,
     rng: &mut StdRng,
     inputs: &dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     input: &NoteWitness,
@@ -601,12 +587,11 @@ fn transfer_proof(
         inputs: [input_witness(input, opening)],
         outputs: [output_witness(&outputs[0]), output_witness(&outputs[1])],
     };
-    prove_for::<1, 2>(prover, verifier, rng, inputs.clone(), circuit)
+    prove_for::<1, 2>(proving, rng, inputs.clone(), circuit)
 }
 
 fn burn_proof(
-    prover: &Prover,
-    verifier: &Verifier,
+    proving: &mut Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT>,
     rng: &mut StdRng,
     inputs: &dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     input: &NoteWitness,
@@ -618,22 +603,21 @@ fn burn_proof(
         inputs: [input_witness(input, opening)],
         outputs: [],
     };
-    prove_for::<1, 0>(prover, verifier, rng, inputs.clone(), circuit)
+    prove_for::<1, 0>(proving, rng, inputs.clone(), circuit)
 }
 
 fn prove_for<const INPUTS: usize, const OUTPUTS: usize>(
-    prover: &Prover,
-    verifier: &Verifier,
+    proving: &mut Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT>,
     rng: &mut StdRng,
     public_inputs: dusk_contract_standards::token::drc20_phoenix::PrivateAssetPublicInputs,
     circuit: Drc20PhoenixCircuit<DEV_ARTIFACT_TREE_HEIGHT, INPUTS, OUTPUTS>,
 ) -> PrivateAssetProof {
-    let (proof, scalars) = prove(prover, rng, &circuit).unwrap();
-    verifier.verify(&proof, &scalars).unwrap();
-    PrivateAssetProof {
-        proof: proof.to_bytes().to_vec(),
-        public_inputs,
-    }
+    let start = Instant::now();
+    let proof = proving
+        .prove_fixed::<_, INPUTS, OUTPUTS>(rng, public_inputs, &circuit)
+        .unwrap();
+    timing("proof_ms", start.elapsed().as_millis());
+    proof
 }
 
 fn input_witness(
@@ -728,7 +712,7 @@ fn parse_contract_id(hex_value: &str) -> ContractId {
     ContractId::from_bytes(bytes)
 }
 
-fn public_parameters(crs_arg: Option<&str>) -> PublicParameters {
+fn public_parameters(crs_arg: Option<&str>) -> (PublicParameters, String) {
     if matches!(crs_arg, Some("--dev")) {
         if env::var_os("DRC20_PHOENIX_ALLOW_DEV_CRS").is_none() {
             panic!(
@@ -736,8 +720,11 @@ fn public_parameters(crs_arg: Option<&str>) -> PublicParameters {
             );
         }
         let mut setup_rng = StdRng::seed_from_u64(DEV_SEED);
-        return PublicParameters::setup(SETUP_SIZE, &mut setup_rng)
-            .expect("setup development public parameters");
+        return (
+            PublicParameters::setup(SETUP_SIZE, &mut setup_rng)
+                .expect("setup development public parameters"),
+            format!("dev-seed-{DEV_SEED:x}-setup-{SETUP_SIZE}"),
+        );
     }
 
     let path = crs_arg.map(PathBuf::from).unwrap_or_else(default_crs_path);
@@ -753,8 +740,30 @@ fn public_parameters(crs_arg: Option<&str>) -> PublicParameters {
             sha256
         );
     }
-    PublicParameters::from_slice(&bytes)
-        .expect("decode Dusk CRS public parameters")
+    (
+        PublicParameters::from_slice(&bytes)
+            .expect("decode Dusk CRS public parameters"),
+        sha256,
+    )
+}
+
+fn proving_context(
+    pp: PublicParameters,
+    crs_hash: String,
+) -> Drc20PhoenixProvingContext<DEV_ARTIFACT_TREE_HEIGHT> {
+    let Some(directory) = env::var_os("DRC20_PHOENIX_PROVER_CACHE_DIR") else {
+        return Drc20PhoenixProvingContext::without_cache(pp);
+    };
+    let mut cache = ProverCacheConfig::new(PathBuf::from(directory), crs_hash);
+    cache.force_rebuild =
+        env::var_os("DRC20_PHOENIX_FORCE_PROVER_CACHE_REBUILD").is_some();
+    Drc20PhoenixProvingContext::with_cache(pp, cache)
+}
+
+fn timing(name: &str, value_ms: u128) {
+    if env::var_os("DRC20_PHOENIX_PROVING_TIMINGS").is_some() {
+        eprintln!("{name}={value_ms}");
+    }
 }
 
 fn default_crs_path() -> PathBuf {
@@ -804,7 +813,7 @@ fn decode_u128(args: &[String]) {
 fn decode_bool(args: &[String]) {
     let bytes = decode_hex(args.get(2).expect("hex bytes"));
     let archived = unsafe { rkyv::archived_root::<bool>(&bytes) };
-    println!("{}", bool::from(*archived));
+    println!("{}", *archived);
 }
 
 fn decode_hex(input: &str) -> Vec<u8> {

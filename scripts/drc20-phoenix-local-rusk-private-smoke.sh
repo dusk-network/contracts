@@ -6,6 +6,13 @@ STANDARDS_DIR="${ROOT_DIR}/standards"
 CARGO_TOOLCHAIN="${CARGO_TOOLCHAIN:-nightly-2026-02-27}"
 CARGO_RUN_PROFILE="${DRC20_PHOENIX_CARGO_RUN_PROFILE:---release}"
 VERIFIER_DATA_DIR="${DRC20_PHOENIX_VERIFIER_DATA_DIR:-${STANDARDS_DIR}/drc20-phoenix-circuits/verifier-data}"
+DRC20_PHOENIX_PROVER_CACHE_DIR="${DRC20_PHOENIX_PROVER_CACHE_DIR:-${ROOT_DIR}/target/drc20-phoenix-prover-cache}"
+export DRC20_PHOENIX_PROVER_CACHE_DIR
+DRC20_PHOENIX_PROVING_TIMINGS="${DRC20_PHOENIX_PROVING_TIMINGS:-1}"
+export DRC20_PHOENIX_PROVING_TIMINGS
+if [ -n "${DRC20_PHOENIX_FORCE_PROVER_CACHE_REBUILD:-}" ]; then
+    export DRC20_PHOENIX_FORCE_PROVER_CACHE_REBUILD
+fi
 
 RUSK_PRIVATE_BIN="${RUSK_PRIVATE_BIN:-}"
 RUSK_WALLET_BIN="${RUSK_WALLET_BIN:-}"
@@ -298,17 +305,15 @@ fi
 if [ "${DRC20_PHOENIX_REAL_CIRCUIT:-0}" != "1" ]; then
     cat >&2 <<'EOF'
 DRC20Phoenix local-node validation is blocked before RPC submission:
-  DRC20_PHOENIX_REAL_CIRCUIT=1 is not set. This branch generates a development
-  verifier-data manifest for the dedicated private-asset circuits, but the
-  local RPC flow is still fail-closed until wallet transaction builders submit
-  real mint/transfer/burn proofs end to end.
+  DRC20_PHOENIX_REAL_CIRCUIT=1 is not set. The script generated the dedicated
+  DRC20Phoenix circuit/verifier artifacts and proof builders, but the RPC
+  submission path remains fail-closed unless explicitly enabled.
 
 The circuits, contract, and data-driver were built successfully. Re-run this script with:
   DRC20_PHOENIX_REAL_CIRCUIT=1
   DRC20_PHOENIX_VERIFIER_DATA_DIR=/path/to/verifier-data
   RUSK_PRIVATE_BIN=/path/to/rusk
   RUSK_WALLET_BIN=/path/to/rusk-wallet
-once RPC transaction builders are available.
 EOF
     exit 2
 fi
