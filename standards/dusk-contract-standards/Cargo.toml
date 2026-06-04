@@ -8,6 +8,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 dusk-core = "=1.6.0"
+dusk-forge = { workspace = true, optional = true }
 bytecheck = { workspace = true }
 rkyv = { workspace = true, features = ["size_32", "alloc", "validation"] }
 serde = { version = "1", default-features = false, features = [
@@ -16,7 +17,8 @@ serde = { version = "1", default-features = false, features = [
 ], optional = true }
 
 [features]
-contract = []
+contract = ["forge"]
+forge = ["dep:dusk-forge"]
 serde = ["dep:serde", "dusk-core/serde"]
 
 [dev-dependencies]

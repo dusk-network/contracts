@@ -794,6 +794,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dlmalloc"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad5208a115eaba24916f7456929832e310a81518c641f93fee4f89aa93aa3675"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "dusk-bls12_381"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -829,6 +840,7 @@ version = "0.1.0"
 dependencies = [
  "bytecheck",
  "dusk-core",
+ "dusk-forge",
  "dusk-vm",
  "rand 0.8.6",
  "rkyv",
@@ -866,6 +878,40 @@ dependencies = [
  "serde",
  "serde_with",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "dusk-data-driver"
+version = "0.3.2-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "191e9b51e34ecb1a22d79de6df7e6e2971121e0069d60d738df9059837f46a1c"
+dependencies = [
+ "bytecheck",
+ "rkyv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dusk-forge"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31edc24ce1a8cfb6ee61d3941145c4b475117c2c0450a6342dc30907c61a5e93"
+dependencies = [
+ "dusk-forge-contract",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dusk-forge-contract"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d9f361a4eddded990e22c61dece5282257b141bf4d4d8cd2f4fda5a17618791"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -1588,6 +1634,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "multisig-controller"
+version = "0.1.0"
+dependencies = [
+ "bytecheck",
+ "dusk-contract-standards",
+ "dusk-core",
+ "dusk-data-driver",
+ "dusk-forge",
+ "rkyv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1754,6 +1814,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9df8d2d3f5deb052f61c65d01d892c4babe604cd884cdd2fcef7f6da4392b476"
 dependencies = [
  "bytecheck",
+ "dlmalloc",
  "hex",
  "rkyv",
  "serde",

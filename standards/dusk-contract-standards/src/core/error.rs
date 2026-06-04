@@ -6,10 +6,15 @@
 
 //! Stable error strings used by the reusable primitives.
 
+pub const ALREADY_INITIALIZED: &str = "DuskStandards: already initialized";
+pub const NOT_INITIALIZED: &str = "DuskStandards: not initialized";
 pub const UNAUTHORIZED: &str = "DuskStandards: unauthorized";
+pub const INVALID_OWNER: &str = "DuskStandards: invalid owner";
 pub const ZERO_PRINCIPAL: &str = "DuskStandards: zero principal";
 pub const REPLAY: &str = "DuskStandards: replay";
 pub const INVALID_NONCE: &str = "DuskStandards: invalid nonce";
+pub const OPERATION_UNKNOWN: &str = "DuskStandards: operation unknown";
+pub const INVALID_OPERATION: &str = "DuskStandards: invalid operation";
 pub const EXPIRED: &str = "DuskStandards: expired";
 pub const REENTRANCY: &str = "DuskStandards: reentrant call";
 pub const OVERFLOW: &str = "DuskStandards: arithmetic overflow";
