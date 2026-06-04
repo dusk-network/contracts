@@ -353,7 +353,7 @@ impl MultisigController {
         approvals: &[SignedAuthorization],
         envelope: ActionEnvelope,
         now: u64,
-    ) -> Vec<Principal> {
+    ) -> MultisigQuorum {
         self.policy.authorize_action(
             authorizations,
             context,
@@ -457,7 +457,7 @@ impl MultisigController {
     ) -> MultisigControllerOutcome {
         self.assert_initialized();
         self.assert_owner(authorizer);
-        self.prune(now);
+        self.prune_tombstones(now);
         self.assert_not_tombstoned(id);
         self.confirm_pending(id, authorizer, now)
     }
@@ -557,6 +557,9 @@ impl MultisigController {
                 .proposals
                 .get_mut(&id)
                 .unwrap_or_else(|| panic!("{}", error::OPERATION_UNKNOWN));
+            if now > operation.deadline {
+                panic!("{}", error::EXPIRED);
+            }
             if operation.confirmed_by(authorizer) {
                 panic!("{}", error::UNAUTHORIZED);
             }
@@ -637,6 +640,10 @@ impl MultisigController {
     fn prune(&mut self, now: u64) {
         self.proposals
             .retain(|_, operation| now <= operation.deadline);
+        self.prune_tombstones(now);
+    }
+
+    fn prune_tombstones(&mut self, now: u64) {
         self.tombstones.retain(|_, expiry| now <= *expiry);
     }
 

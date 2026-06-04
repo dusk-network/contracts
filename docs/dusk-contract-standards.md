@@ -220,9 +220,10 @@ The native test suite covers positive and negative paths for:
 - observed-or-signed owner, role, and upgrade-admin authorization;
 - threshold multisig authorization, duplicate signer rejection, observed
   Moonlight/contract approval, Phoenix signed approval, and threshold-gated
-  owner/threshold maintenance;
+  owner/threshold maintenance through verified quorum witnesses;
 - standalone multisig controller proposal, confirmation, duplicate-confirmation
-  rejection, non-owner rejection, expiry cleanup, cancellation, tombstoning,
+  rejection, non-owner rejection, same-id/different-target rejection, explicit
+  expired-confirmation rejection, expiry cleanup, cancellation, tombstoning,
   authority updates, 2-of-3 property coverage, and proxy-as-owner VM execution;
 - timelock scheduling, cancellation, execution, and invalid states;
 - role-gated timelock controller flows, including self-governed delay updates;

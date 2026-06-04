@@ -7,8 +7,8 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use dusk_contract_standards::access::{
-    AccessControl, Ownable, Ownable2Step, OwnerSet, Pausable,
-    DEFAULT_ADMIN_ROLE,
+    AccessControl, Ownable, Ownable2Step, OwnerAuthorization, OwnerSet,
+    Pausable, Role, RoleAuthorization, DEFAULT_ADMIN_ROLE,
 };
 use dusk_contract_standards::auth::{
     ActionEnvelope, AuthorizationManager, AuthorizedAction, Authorizer,
@@ -20,9 +20,9 @@ use dusk_contract_standards::core::{
 };
 use dusk_contract_standards::governance::{
     MultisigConfig, MultisigController, MultisigControllerConfig,
-    MultisigControllerStatus, MultisigTarget, ThresholdMultisig, Timelock,
-    TimelockController, CANCELLER_ROLE, EXECUTOR_ROLE, PROPOSER_ROLE,
-    TIMELOCK_ADMIN_ROLE,
+    MultisigControllerStatus, MultisigQuorum, MultisigTarget,
+    ThresholdMultisig, Timelock, TimelockController, CANCELLER_ROLE,
+    EXECUTOR_ROLE, PROPOSER_ROLE, TIMELOCK_ADMIN_ROLE,
 };
 use dusk_contract_standards::proxy::{
     StateStore, UpgradeActivated, UpgradeAdmin, UpgradeCancelled,
@@ -62,6 +62,10 @@ fn c(byte: u8) -> ContractId {
     ContractId::from_bytes([byte; 32])
 }
 
+fn contract_principal(byte: u8) -> Principal {
+    Principal::contract(c(byte))
+}
+
 fn multisig_target(
     contract: u8,
     function: &str,
@@ -79,9 +83,195 @@ fn assert_panics<R>(f: impl FnOnce() -> R) {
     assert!(catch_unwind(AssertUnwindSafe(f)).is_err());
 }
 
+fn assert_panics_with<R>(f: impl FnOnce() -> R, expected: &str) {
+    let panic = match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(_) => panic!("expected panic"),
+        Err(panic) => panic,
+    };
+    let message = if let Some(message) = panic.downcast_ref::<String>() {
+        message.as_str()
+    } else if let Some(message) = panic.downcast_ref::<&'static str>() {
+        message
+    } else {
+        "<non-string panic>"
+    };
+    assert_eq!(message, expected);
+}
+
+fn ownable_auth(ownable: &Ownable, principal: Principal) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    ownable.authorize_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn ownable2_owner_auth(
+    ownable: &Ownable2Step,
+    principal: Principal,
+) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    ownable.authorize_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn ownable2_pending_auth(
+    ownable: &Ownable2Step,
+    principal: Principal,
+) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    ownable.authorize_pending_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn owner_set_auth(
+    owners: &OwnerSet,
+    principal: Principal,
+) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    owners.authorize_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn role_auth(
+    access: &AccessControl,
+    role: Role,
+    principal: Principal,
+) -> RoleAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    access.authorize_role(
+        role,
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn timelock_role_auth(
+    controller: &TimelockController,
+    role: Role,
+    principal: Principal,
+) -> RoleAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    controller.access().authorize_role(
+        role,
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
 fn moonlight_secret(seed: u64) -> BlsSecretKey {
     let mut rng = StdRng::seed_from_u64(seed);
     BlsSecretKey::random(&mut rng)
+}
+
+fn moonlight_owner(seed: u64) -> (BlsSecretKey, BlsPublicKey, Principal) {
+    let secret = moonlight_secret(seed);
+    let public = BlsPublicKey::from(&secret);
+    let principal = Principal::moonlight(&public);
+    (secret, public, principal)
+}
+
+fn sorted_principals(mut principals: Vec<Principal>) -> Vec<Principal> {
+    principals.sort();
+    principals
+}
+
+fn verified_multisig_quorum(
+    multisig: &ThresholdMultisig,
+    owners: Vec<(BlsSecretKey, BlsPublicKey, Principal)>,
+    contract: ContractId,
+    domain: [u8; 32],
+    action_id: [u8; 32],
+    payload_hash: [u8; 32],
+) -> MultisigQuorum {
+    let approvals = owners
+        .into_iter()
+        .map(|(secret, public, principal)| {
+            signed_moonlight_action(
+                secret,
+                public,
+                principal,
+                contract,
+                domain,
+                action_id,
+                payload_hash,
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
+    let manager = AuthorizationManager::new();
+    multisig.verify_action(
+        &manager,
+        CallContext::none(),
+        &approvals,
+        envelope,
+        0,
+    )
+}
+
+fn verified_controller_quorum(
+    controller: &MultisigController,
+    owners: Vec<(BlsSecretKey, BlsPublicKey, Principal)>,
+    contract: ContractId,
+    domain: [u8; 32],
+    action_id: [u8; 32],
+    payload_hash: [u8; 32],
+) -> MultisigQuorum {
+    let approvals = owners
+        .into_iter()
+        .map(|(secret, public, principal)| {
+            signed_moonlight_action(
+                secret,
+                public,
+                principal,
+                contract,
+                domain,
+                action_id,
+                payload_hash,
+                0,
+            )
+        })
+        .collect::<Vec<_>>();
+    let envelope = ActionEnvelope::new(
+        TEST_CHAIN_ID,
+        contract,
+        domain,
+        action_id,
+        payload_hash,
+    );
+    let manager = AuthorizationManager::new();
+    controller.verify_action(
+        &manager,
+        CallContext::none(),
+        &approvals,
+        envelope,
+        0,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -143,11 +333,81 @@ fn signed_phoenix_action(
     })
 }
 
+fn moonlight_action(secret: &BlsSecretKey, nonce: u64) -> AuthorizedAction {
+    let public = BlsPublicKey::from(secret);
+    AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
+        contract: c(80),
+        domain: [81u8; 32],
+        action_id: [82u8; 32],
+        nonce,
+        expires_at: 0,
+        principal: Principal::moonlight(&public),
+        payload_hash: [83u8; 32],
+    }
+}
+
+fn signed_moonlight(
+    secret: &BlsSecretKey,
+    action: AuthorizedAction,
+) -> SignedAuthorization {
+    let public_key = BlsPublicKey::from(secret);
+    SignedAuthorization::Moonlight(MoonlightAuthorization {
+        action,
+        public_key,
+        signature: secret.sign(&action.message_bytes()),
+    })
+}
+
+fn phoenix_secret(seed: u64) -> SchnorrSecretKey {
+    SchnorrSecretKey::from(JubJubScalar::from(seed))
+}
+
+fn phoenix_action(secret: &SchnorrSecretKey, nonce: u64) -> AuthorizedAction {
+    let public = SchnorrPublicKey::from(secret);
+    AuthorizedAction {
+        chain_id: TEST_CHAIN_ID,
+        contract: c(84),
+        domain: [85u8; 32],
+        action_id: [86u8; 32],
+        nonce,
+        expires_at: 0,
+        principal: Principal::phoenix_public_key(&public),
+        payload_hash: [87u8; 32],
+    }
+}
+
+fn signed_phoenix(
+    secret: &SchnorrSecretKey,
+    action: AuthorizedAction,
+    replay_key: Option<[u8; 32]>,
+    rng_seed: u64,
+) -> SignedAuthorization {
+    let public_key = SchnorrPublicKey::from(secret);
+    let mut rng = StdRng::seed_from_u64(rng_seed);
+    SignedAuthorization::Phoenix(PhoenixSignatureAuthorization {
+        action,
+        public_key,
+        signature: secret.sign(&mut rng, action.message_hash()),
+        replay_key,
+    })
+}
+
+fn envelope_for(action: AuthorizedAction) -> ActionEnvelope {
+    ActionEnvelope::new(
+        action.chain_id,
+        action.contract,
+        action.domain,
+        action.action_id,
+        action.payload_hash,
+    )
+}
+
 #[test]
 fn ownable_positive_and_negative_paths() {
-    let owner = p(1);
-    let next = p(2);
-    let stranger = p(3);
+    let owner = contract_principal(1);
+    let next = contract_principal(2);
+    let stranger = contract_principal(3);
 
     let mut ownable = Ownable::new();
     ownable.init(owner);
@@ -155,52 +415,71 @@ fn ownable_positive_and_negative_paths() {
     ownable.assert_owner(owner);
     assert_panics(|| ownable.assert_owner(stranger));
 
-    ownable.transfer_ownership(owner, next);
+    let authorization = ownable_auth(&ownable, owner);
+    ownable.transfer_ownership(authorization, next);
     assert_eq!(ownable.owner(), Some(next));
-    assert_panics(|| ownable.transfer_ownership(owner, stranger));
-    ownable.renounce_ownership(next);
+    assert_panics(|| {
+        let authorization = ownable_auth(&ownable, owner);
+        ownable.transfer_ownership(authorization, stranger);
+    });
+    let authorization = ownable_auth(&ownable, next);
+    ownable.renounce_ownership(authorization);
     assert_eq!(ownable.owner(), None);
 }
 
 #[test]
 fn ownable_two_step_requires_pending_owner_acceptance() {
-    let owner = p(1);
-    let next = p(2);
-    let stranger = p(3);
+    let owner = contract_principal(1);
+    let next = contract_principal(2);
+    let stranger = contract_principal(3);
 
     let mut ownable = Ownable2Step::new();
     ownable.init(owner);
-    ownable.transfer_ownership(owner, next);
+    let authorization = ownable2_owner_auth(&ownable, owner);
+    ownable.transfer_ownership(authorization, next);
     assert_eq!(ownable.owner(), Some(owner));
     assert_eq!(ownable.pending_owner(), Some(next));
 
-    assert_panics(|| ownable.accept_ownership(stranger));
-    ownable.accept_ownership(next);
+    assert_panics(|| {
+        let authorization = ownable2_pending_auth(&ownable, stranger);
+        ownable.accept_ownership(authorization);
+    });
+    let authorization = ownable2_pending_auth(&ownable, next);
+    ownable.accept_ownership(authorization);
     assert_eq!(ownable.owner(), Some(next));
     assert_eq!(ownable.pending_owner(), None);
 }
 
 #[test]
 fn access_control_admin_role_gates_grants_and_revokes() {
-    let admin = p(1);
-    let minter = p(2);
-    let stranger = p(3);
+    let admin = contract_principal(1);
+    let minter = contract_principal(2);
+    let stranger = contract_principal(3);
     let minter_role = [7u8; 32];
 
     let mut access = AccessControl::new();
     access.init_admin(admin);
     assert!(access.has_role(DEFAULT_ADMIN_ROLE, admin));
-    assert_panics(|| access.grant_role(stranger, minter_role, minter));
+    assert_panics(|| {
+        let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, stranger);
+        access.grant_role(authorization, minter_role, minter);
+    });
 
-    access.grant_role(admin, minter_role, minter);
+    let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, admin);
+    access.grant_role(authorization, minter_role, minter);
     assert!(access.has_role(minter_role, minter));
     access.assert_role(minter_role, minter);
 
-    assert_panics(|| access.revoke_role(stranger, minter_role, minter));
-    access.revoke_role(admin, minter_role, minter);
+    assert_panics(|| {
+        let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, stranger);
+        access.revoke_role(authorization, minter_role, minter);
+    });
+    let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, admin);
+    access.revoke_role(authorization, minter_role, minter);
     assert!(!access.has_role(minter_role, minter));
 
-    access.renounce_role(DEFAULT_ADMIN_ROLE, admin);
+    let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, admin);
+    access.renounce_role(DEFAULT_ADMIN_ROLE, authorization);
     assert!(!access.has_role(DEFAULT_ADMIN_ROLE, admin));
     assert_panics(|| access.init_admin(stranger));
 }
@@ -220,27 +499,40 @@ fn owner_set_supports_mixed_dusk_principals() {
     assert_eq!(owners.count_kind(PrincipalKind::Phoenix), 1);
     assert_panics(|| owners.assert_owner(stranger));
 
-    owners.add_owner(moonlight, contract);
+    let authorization = owner_set_auth(&owners, moonlight);
+    owners.add_owner(authorization, contract);
     assert_eq!(owners.count_kind(PrincipalKind::Contract), 1);
-    assert_panics(|| owners.add_owner(stranger, p(5)));
+    assert_panics(|| {
+        let authorization = owner_set_auth(&owners, stranger);
+        owners.add_owner(authorization, p(5));
+    });
 
-    owners.remove_owner(phoenix, moonlight);
+    let authorization = owner_set_auth(&owners, moonlight);
+    owners.remove_owner(authorization, moonlight);
     assert!(!owners.is_owner(moonlight));
-    owners.replace_owner(contract, phoenix, moonlight);
+    let authorization = owner_set_auth(&owners, contract);
+    owners.replace_owner(authorization, phoenix, moonlight);
     assert!(owners.is_owner(moonlight));
     assert!(!owners.is_owner(phoenix));
 
     let before = owners.owners();
     assert_panics(|| {
-        owners.replace_owner(contract, moonlight, Principal::contract(c(0)));
+        let authorization = owner_set_auth(&owners, contract);
+        owners.replace_owner(
+            authorization,
+            moonlight,
+            Principal::contract(c(0)),
+        );
     });
     assert_eq!(owners.owners(), before);
     assert_panics(|| {
-        owners.replace_owner(contract, moonlight, contract);
+        let authorization = owner_set_auth(&owners, contract);
+        owners.replace_owner(authorization, moonlight, contract);
     });
     assert_eq!(owners.owners(), before);
     assert_panics(|| {
-        owners.replace_owner(contract, p(99), p(10));
+        let authorization = owner_set_auth(&owners, contract);
+        owners.replace_owner(authorization, p(99), p(10));
     });
     assert_eq!(owners.owners(), before);
 }
@@ -360,16 +652,16 @@ fn threshold_multisig_requires_distinct_quorum_before_nonce_consumption() {
     assert_eq!(manager.nonce(owner_a, domain), 0);
     assert_eq!(manager.nonce(owner_b, domain), 0);
 
-    let signers = multisig.authorize_action(
+    let quorum = multisig.authorize_action(
         &mut manager,
         CallContext::none(),
         &[approval_a.clone(), approval_b.clone()],
         envelope,
         0,
     );
-    assert_eq!(signers.len(), 2);
-    assert!(signers.contains(&owner_a));
-    assert!(signers.contains(&owner_b));
+    assert_eq!(quorum.signers().len(), 2);
+    assert!(quorum.signers().contains(&owner_a));
+    assert!(quorum.signers().contains(&owner_b));
     assert_eq!(manager.nonce(owner_a, domain), 1);
     assert_eq!(manager.nonce(owner_b, domain), 1);
 
@@ -433,59 +725,112 @@ fn threshold_multisig_counts_observed_moonlight_and_contract_callers() {
         );
     });
 
-    let signers = multisig.authorize_action(
+    let quorum = multisig.authorize_action(
         &mut manager,
         CallContext::from_principal(contract_owner),
         &[phoenix_approval],
         envelope,
         0,
     );
-    assert_eq!(signers, vec![phoenix_owner, contract_owner]);
+    assert_eq!(quorum.signers(), &[phoenix_owner, contract_owner]);
     assert_eq!(manager.nonce(phoenix_owner, domain), 1);
 }
 
 #[test]
 fn threshold_multisig_owner_management_requires_quorum_and_is_atomic() {
-    let owner_a = p(120);
-    let owner_b = p(121);
-    let owner_c = p(122);
-    let owner_d = p(123);
-    let outsider = p(124);
+    let owner_a = moonlight_owner(120);
+    let owner_b = moonlight_owner(121);
+    let owner_c = moonlight_owner(122);
+    let owner_d = moonlight_owner(123);
+    let outsider = moonlight_owner(124);
+    let owners = sorted_principals(vec![owner_a.2, owner_b.2, owner_c.2]);
+    let quorum = verified_multisig_quorum(
+        &{
+            let mut policy = ThresholdMultisig::new();
+            policy.init(MultisigConfig {
+                owners: owners.clone(),
+                threshold: 2,
+            });
+            policy
+        },
+        vec![moonlight_owner(120), moonlight_owner(121)],
+        c(125),
+        [126u8; 32],
+        [127u8; 32],
+        [128u8; 32],
+    );
+    let single_owner_quorum = verified_multisig_quorum(
+        &{
+            let mut policy = ThresholdMultisig::new();
+            policy.init(MultisigConfig {
+                owners: vec![owner_a.2],
+                threshold: 1,
+            });
+            policy
+        },
+        vec![moonlight_owner(120)],
+        c(125),
+        [126u8; 32],
+        [127u8; 32],
+        [129u8; 32],
+    );
 
     let mut multisig = ThresholdMultisig::new();
     multisig.init(MultisigConfig {
-        owners: vec![owner_a, owner_b, owner_c],
+        owners: owners.clone(),
         threshold: 2,
     });
 
-    assert_panics(|| multisig.set_threshold(&[owner_a], 1));
+    assert_panics(|| multisig.set_threshold(&single_owner_quorum, 1));
     assert_eq!(multisig.threshold(), 2);
 
-    assert_panics(|| multisig.add_owner(&[owner_a, outsider], owner_d));
-    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_c]);
+    let outsider_quorum = verified_multisig_quorum(
+        &{
+            let mut policy = ThresholdMultisig::new();
+            policy.init(MultisigConfig {
+                owners: vec![owner_a.2, outsider.2],
+                threshold: 2,
+            });
+            policy
+        },
+        vec![moonlight_owner(120), moonlight_owner(124)],
+        c(125),
+        [126u8; 32],
+        [127u8; 32],
+        [130u8; 32],
+    );
+    assert_panics(|| multisig.add_owner(&outsider_quorum, owner_d.2));
+    assert_eq!(multisig.owners(), owners);
 
-    multisig.add_owner(&[owner_a, owner_b], owner_d);
-    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_c, owner_d]);
+    multisig.add_owner(&quorum, owner_d.2);
+    assert_eq!(
+        multisig.owners(),
+        sorted_principals(vec![owner_a.2, owner_b.2, owner_c.2, owner_d.2]),
+    );
 
     let before = multisig.owners();
-    assert_panics(|| {
-        multisig.replace_owner(&[owner_a, owner_b], owner_c, owner_d)
-    });
+    assert_panics(|| multisig.replace_owner(&quorum, owner_c.2, owner_d.2));
     assert_eq!(multisig.owners(), before);
 
-    assert_panics(|| multisig.remove_owner(&[owner_a, owner_b], owner_d, 4));
+    assert_panics(|| multisig.remove_owner(&quorum, owner_d.2, 4));
     assert_eq!(multisig.owners(), before);
     assert_eq!(multisig.threshold(), 2);
 
-    multisig.remove_owner(&[owner_a, owner_b], owner_d, 2);
-    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_c]);
+    multisig.remove_owner(&quorum, owner_d.2, 2);
+    assert_eq!(
+        multisig.owners(),
+        sorted_principals(vec![owner_a.2, owner_b.2, owner_c.2]),
+    );
 
-    multisig.replace_owner(&[owner_a, owner_b], owner_c, owner_d);
-    assert_eq!(multisig.owners(), vec![owner_a, owner_b, owner_d]);
+    multisig.replace_owner(&quorum, owner_c.2, owner_d.2);
+    assert_eq!(
+        multisig.owners(),
+        sorted_principals(vec![owner_a.2, owner_b.2, owner_d.2]),
+    );
 
-    multisig.set_threshold(&[owner_a, owner_b], 3);
+    multisig.set_threshold(&quorum, 3);
     assert_eq!(multisig.threshold(), 3);
-    assert_panics(|| multisig.set_threshold(&[owner_a, owner_b], 0));
+    assert_panics(|| multisig.set_threshold(&quorum, 0));
     assert_eq!(multisig.threshold(), 3);
 }
 
@@ -528,6 +873,19 @@ fn multisig_controller_proposes_confirms_executes_and_tombstones() {
         vec![owner_a]
     );
 
+    let before_proposal = controller.proposal(id);
+    let before_tombstone = controller.tombstone_expiry(id);
+    assert_panics(|| {
+        controller.propose(
+            id,
+            multisig_target(135, "set_value", [9], [136u8; 32]),
+            owner_b,
+            1,
+        );
+    });
+    assert_eq!(controller.proposal(id), before_proposal);
+    assert_eq!(controller.tombstone_expiry(id), before_tombstone);
+
     let ready = controller.confirm(id, owner_b, 1);
     assert_eq!(ready.status, MultisigControllerStatus::Ready);
     assert_eq!(ready.confirmations, 2);
@@ -559,24 +917,24 @@ fn multisig_controller_proposes_confirms_executes_and_tombstones() {
 
 #[test]
 fn multisig_controller_expiry_cancel_and_authority_updates_are_atomic() {
-    let owner_a = p(140);
-    let owner_b = p(141);
-    let owner_c = p(142);
-    let owner_d = p(143);
-    let outsider = p(144);
+    let owner_a = moonlight_owner(140);
+    let owner_b = moonlight_owner(141);
+    let owner_c = moonlight_owner(142);
+    let owner_d = moonlight_owner(143);
+    let outsider = moonlight_owner(144);
     let id_a = [145u8; 32];
     let id_b = [146u8; 32];
 
     let mut controller = MultisigController::new();
     controller.init(MultisigControllerConfig {
-        owners: vec![owner_a, owner_b, owner_c],
+        owners: vec![owner_a.2, owner_b.2, owner_c.2],
         threshold: 2,
         proposal_ttl: 3,
         tombstone_ttl: 4,
     });
     assert_panics(|| {
         controller.init(MultisigControllerConfig {
-            owners: vec![owner_a, owner_b],
+            owners: vec![owner_a.2, owner_b.2],
             threshold: 1,
             proposal_ttl: 1,
             tombstone_ttl: 1,
@@ -586,66 +944,152 @@ fn multisig_controller_expiry_cancel_and_authority_updates_are_atomic() {
     controller.propose(
         id_a,
         multisig_target(147, "one", [], [148u8; 32]),
-        owner_a,
+        owner_a.2,
         10,
     );
     assert!(controller.proposal(id_a).is_some());
-    assert_panics(|| controller.confirm(id_a, owner_b, 14));
-    assert!(controller.proposal(id_a).is_none());
+    let before_proposal = controller.proposal(id_a);
+    let before_tombstone = controller.tombstone_expiry(id_a);
+    assert_panics_with(
+        || controller.confirm(id_a, owner_b.2, 14),
+        dusk_contract_standards::core::error::EXPIRED,
+    );
+    assert_eq!(controller.proposal(id_a), before_proposal);
+    assert_eq!(controller.tombstone_expiry(id_a), before_tombstone);
     controller.propose(
         id_b,
         multisig_target(149, "two", [], [150u8; 32]),
-        owner_a,
+        owner_a.2,
         14,
     );
     assert!(controller.proposal(id_a).is_none());
     assert!(controller.proposal(id_b).is_some());
 
-    assert_panics(|| controller.cancel(id_b, &[owner_a], 14));
+    let single_quorum = verified_multisig_quorum(
+        &{
+            let mut policy = ThresholdMultisig::new();
+            policy.init(MultisigConfig {
+                owners: vec![owner_a.2],
+                threshold: 1,
+            });
+            policy
+        },
+        vec![moonlight_owner(140)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        id_b,
+    );
+    assert_panics(|| controller.cancel(id_b, &single_quorum, 14));
     assert!(controller.proposal(id_b).is_some());
-    let cancelled = controller.cancel(id_b, &[owner_a, owner_b], 14);
-    assert_eq!(cancelled.signers, vec![owner_a, owner_b]);
+    let quorum = verified_controller_quorum(
+        &controller,
+        vec![moonlight_owner(140), moonlight_owner(141)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        id_b,
+    );
+    let cancelled = controller.cancel(id_b, &quorum, 14);
+    assert_eq!(
+        cancelled.signers,
+        sorted_principals(vec![owner_a.2, owner_b.2]),
+    );
     assert!(controller.proposal(id_b).is_none());
 
     controller.propose(
         id_a,
         multisig_target(151, "three", [], [152u8; 32]),
-        owner_a,
+        owner_a.2,
         15,
     );
     let before = controller.owners();
+    let outsider_quorum = verified_multisig_quorum(
+        &{
+            let mut policy = ThresholdMultisig::new();
+            policy.init(MultisigConfig {
+                owners: vec![owner_a.2, outsider.2],
+                threshold: 2,
+            });
+            policy
+        },
+        vec![moonlight_owner(140), moonlight_owner(144)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        [153u8; 32],
+    );
     assert_panics(|| {
         controller.update_authority(
-            &[owner_a, outsider],
-            vec![owner_a, owner_d],
+            &outsider_quorum,
+            vec![owner_a.2, owner_d.2],
             2,
         );
     });
     assert_eq!(controller.owners(), before);
     assert!(controller.proposal(id_a).is_some());
 
+    let quorum = verified_controller_quorum(
+        &controller,
+        vec![moonlight_owner(140), moonlight_owner(141)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        [154u8; 32],
+    );
     let event = controller.update_authority(
-        &[owner_a, owner_b],
-        vec![owner_a, owner_b, owner_c, owner_d],
+        &quorum,
+        vec![owner_a.2, owner_b.2, owner_c.2, owner_d.2],
         2,
     );
     assert_eq!(event.previous_owners, before);
-    assert_eq!(event.owners, vec![owner_a, owner_b, owner_c, owner_d]);
+    assert_eq!(
+        event.owners,
+        sorted_principals(vec![owner_a.2, owner_b.2, owner_c.2, owner_d.2]),
+    );
     assert!(event.removed_operations.is_empty());
     assert!(controller.proposal(id_a).is_some());
 
-    let event = controller.update_authority(
-        &[owner_a, owner_b],
-        vec![owner_a, owner_d],
-        2,
+    let quorum = verified_controller_quorum(
+        &controller,
+        vec![moonlight_owner(140), moonlight_owner(141)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        [155u8; 32],
     );
+    let event =
+        controller.update_authority(&quorum, vec![owner_a.2, owner_d.2], 2);
     assert_eq!(event.removed_operations, vec![id_a]);
     assert!(controller.proposal(id_a).is_none());
 
     let before_ttl = controller.proposal_ttl();
-    assert_panics(|| controller.set_time_limits(&[owner_a], 0, 4));
+    let single_quorum = verified_multisig_quorum(
+        &{
+            let mut policy = ThresholdMultisig::new();
+            policy.init(MultisigConfig {
+                owners: vec![owner_a.2],
+                threshold: 1,
+            });
+            policy
+        },
+        vec![moonlight_owner(140)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        [156u8; 32],
+    );
+    assert_panics(|| controller.set_time_limits(&single_quorum, 0, 4));
     assert_eq!(controller.proposal_ttl(), before_ttl);
-    let event = controller.set_time_limits(&[owner_a, owner_d], 8, 9);
+    let quorum = verified_controller_quorum(
+        &controller,
+        vec![moonlight_owner(140), moonlight_owner(143)],
+        c(145),
+        [146u8; 32],
+        [147u8; 32],
+        [157u8; 32],
+    );
+    let event = controller.set_time_limits(&quorum, 8, 9);
     assert_eq!(event.previous_proposal_ttl, 3);
     assert_eq!(event.proposal_ttl, 8);
     assert_eq!(controller.tombstone_ttl(), 9);
@@ -1096,26 +1540,29 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
     let mut ownable = Ownable::new();
     ownable.init(phoenix);
     assert_eq!(
-        ownable.authorize_owner_action(
-            &mut manager,
-            CallContext::none(),
-            Some(&phoenix_signed),
-            ActionEnvelope::new(
-                TEST_CHAIN_ID,
-                contract,
-                domain,
-                action_id,
-                [49u8; 32]
-            ),
-            0,
-        ),
+        ownable
+            .authorize_owner_action(
+                &mut manager,
+                CallContext::none(),
+                Some(&phoenix_signed),
+                ActionEnvelope::new(
+                    TEST_CHAIN_ID,
+                    contract,
+                    domain,
+                    action_id,
+                    [49u8; 32]
+                ),
+                0,
+            )
+            .principal(),
         phoenix
     );
 
     let mut access = AccessControl::new();
     let role = [50u8; 32];
     access.init_admin(moonlight);
-    access.grant_role(moonlight, role, phoenix);
+    let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, moonlight);
+    access.grant_role(authorization, role, phoenix);
     let phoenix_action = AuthorizedAction {
         chain_id: TEST_CHAIN_ID,
         nonce: 1,
@@ -1130,20 +1577,22 @@ fn observed_or_signed_authorization_wraps_owner_role_and_admin_checks() {
             replay_key: None,
         });
     assert_eq!(
-        access.authorize_role_action(
-            role,
-            &mut manager,
-            CallContext::none(),
-            Some(&phoenix_signed),
-            ActionEnvelope::new(
-                TEST_CHAIN_ID,
-                contract,
-                domain,
-                action_id,
-                [51u8; 32]
-            ),
-            0,
-        ),
+        access
+            .authorize_role_action(
+                role,
+                &mut manager,
+                CallContext::none(),
+                Some(&phoenix_signed),
+                ActionEnvelope::new(
+                    TEST_CHAIN_ID,
+                    contract,
+                    domain,
+                    action_id,
+                    [51u8; 32]
+                ),
+                0,
+            )
+            .principal(),
         phoenix
     );
 
@@ -1425,7 +1874,7 @@ fn failed_owner_role_and_admin_signed_checks_do_not_consume_nonce() {
     let signer_pk = BlsPublicKey::from(&signer_sk);
     let signer = Principal::moonlight(&signer_pk);
     let owner = p(71);
-    let admin = p(72);
+    let admin = contract_principal(72);
     let contract = c(73);
     let implementation = c(74);
     let role = [75u8; 32];
@@ -1469,7 +1918,8 @@ fn failed_owner_role_and_admin_signed_checks_do_not_consume_nonce() {
 
     let mut access = AccessControl::new();
     access.init_admin(admin);
-    access.grant_role(admin, role, owner);
+    let authorization = role_auth(&access, DEFAULT_ADMIN_ROLE, admin);
+    access.grant_role(authorization, role, owner);
     assert_panics(|| {
         access.authorize_role_action(
             role,
@@ -1541,7 +1991,7 @@ fn timelock_schedules_executes_and_rejects_invalid_states() {
 
 #[test]
 fn timelock_controller_gates_schedule_execute_cancel_and_policy() {
-    let admin = p(1);
+    let admin = contract_principal(1);
     let proposer = p(2);
     let executor = p(3);
     let canceller = p(4);
@@ -1553,9 +2003,15 @@ fn timelock_controller_gates_schedule_execute_cancel_and_policy() {
         TimelockController::new(controller_principal, admin, 5);
     assert_eq!(controller.self_principal(), controller_principal);
     assert!(controller.has_role(TIMELOCK_ADMIN_ROLE, admin));
-    controller.grant_role(admin, PROPOSER_ROLE, proposer);
-    controller.grant_role(admin, EXECUTOR_ROLE, executor);
-    controller.grant_role(admin, CANCELLER_ROLE, canceller);
+    let authorization =
+        timelock_role_auth(&controller, DEFAULT_ADMIN_ROLE, admin);
+    controller.grant_role(authorization, PROPOSER_ROLE, proposer);
+    let authorization =
+        timelock_role_auth(&controller, DEFAULT_ADMIN_ROLE, admin);
+    controller.grant_role(authorization, EXECUTOR_ROLE, executor);
+    let authorization =
+        timelock_role_auth(&controller, DEFAULT_ADMIN_ROLE, admin);
+    controller.grant_role(authorization, CANCELLER_ROLE, canceller);
 
     assert_panics(|| {
         controller.schedule(stranger, op, 10, vec![]);

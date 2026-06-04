@@ -713,16 +713,16 @@ fn threshold_multisig_consumes_approvals_only_after_quorum_success() {
     });
     assert_eq!(authorizations.nonce(outsider, DOMAIN), 0);
 
-    let signers = multisig.authorize_action(
+    let quorum = multisig.authorize_action(
         &mut authorizations,
         CallContext::from_principal(owner_a),
         &[signed_b.clone()],
         envelope(),
         100,
     );
-    assert_eq!(signers.len(), 2);
-    assert!(signers.contains(&owner_a));
-    assert!(signers.contains(&owner_b));
+    assert_eq!(quorum.signers().len(), 2);
+    assert!(quorum.signers().contains(&owner_a));
+    assert!(quorum.signers().contains(&owner_b));
     assert_eq!(authorizations.nonce(owner_b, DOMAIN), 1);
     assert_panics(|| {
         multisig.authorize_action(
@@ -809,7 +809,7 @@ fn multisig_controller_lifecycle_replay_and_authority_changes_are_pinned() {
     let expired_id = [36u8; 32];
     controller.propose(expired_id, target(36), owner_a, 3);
     assert_panics(|| controller.confirm(expired_id, owner_b, 14));
-    assert!(controller.proposal(expired_id).is_none());
+    assert!(controller.proposal(expired_id).is_some());
     let replacement_id = [37u8; 32];
     controller.propose(replacement_id, target(37), owner_a, 14);
     assert!(controller.proposal(expired_id).is_none());

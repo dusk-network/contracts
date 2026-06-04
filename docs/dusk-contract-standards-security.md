@@ -87,6 +87,11 @@ Multisig approvals should be bound to the exact operation through
 minting, pausing, and role administration should use separate domains or action
 ids so approvals cannot be replayed across policy surfaces.
 
+Quorum-gated mutators take a `MultisigQuorum` witness rather than raw principal
+arrays. The witness is produced by the multisig verification path and has a
+private signer list, so callers can inspect who signed but cannot forge a
+quorum by manually passing known owner principals.
+
 Use the standalone `MultisigController` when a ported contract wants a single
 owner/admin principal like an Ethereum contract owned by a Safe. The target
 contract should assign ownership or the relevant role to the controller's

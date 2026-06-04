@@ -32,7 +32,9 @@ Moonlight/Phoenix/contract owners approve controller operations.
   bytes, and salt.
 - A ready operation must be removed from pending proposals and tombstoned before
   the wrapper attempts target execution.
-- Expired proposals are pruned and cannot become ready.
+- Expired proposals cannot become ready. Direct confirmation returns the
+  explicit expired error without mutating the pending operation; later
+  proposal/cancel lifecycle calls prune expired pending operations.
 - Authority changes that remove owners or change threshold clear stale pending
   operations.
 
@@ -60,7 +62,8 @@ Phoenix owners and threshold `2`, then deploy `proxy_counter` with
 The native property test exercises the raw controller state machine across
 random owners, ids, targets, TTLs, tombstone windows, and timings. It checks
 atomicity for non-owner proposals, non-owner confirmations, duplicate
-confirmations, one-of-three pending behavior, expiry pruning, ready-state
+confirmations, same-id/different-target rejection, one-of-three pending
+behavior, expired confirmation rejection without mutation, ready-state
 tombstoning, tombstone replay rejection, and successful re-use only after the
 tombstone has expired.
 
@@ -71,11 +74,14 @@ Phoenix. Phoenix owners approve by Schnorr-signed `AuthorizedAction`.
 Moonlight and contract owners may be accepted through observed runtime context
 when the host exposes it.
 
-The Forge wrapper verifies signatures before consuming nonce state, but only
-consumes after the controller accepts the proposal/confirmation/maintenance
-operation. This avoids burning a valid signature on duplicate confirmations,
-wrong threshold membership, invalid targets, expired proposals, or invalid
-maintenance payloads.
+The Forge wrapper verifies signatures before consuming nonce state. Threshold
+maintenance calls receive a `MultisigQuorum` witness from that verification
+path rather than a caller-supplied list of principals, so composing contracts
+cannot accidentally satisfy owner management by naming owners without proving
+authorization. The wrapper consumes nonce state only after the controller
+accepts the proposal/confirmation/maintenance operation. This avoids burning a
+valid signature on duplicate confirmations, wrong threshold membership,
+invalid targets, expired proposals, or invalid maintenance payloads.
 
 Execution is automatic at threshold. There is no separate `execute` step. This
 is simpler and avoids a ready-operation queue, but systems that require a final
@@ -87,10 +93,10 @@ A target execution failure emits `multisig/operation_executed` with
 same logical call requires a new salt. This avoids accidental replay, but
 clients must surface failed execution clearly.
 
-`propose` can count as a confirmation for an existing operation with the same
-operation id. This is acceptable because the signed payload is the exact
-operation id, but client UX should prefer the explicit `confirm` method after a
-proposal already exists.
+`propose` can count as a confirmation for an existing operation only when the
+supplied target matches the stored target for the operation id. Client UX
+should still prefer the explicit `confirm` method after a proposal already
+exists.
 
 ## Residual Risks
 

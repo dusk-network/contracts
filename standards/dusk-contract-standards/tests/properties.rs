@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use dusk_contract_standards::access::{
-    AccessControl, Ownable2Step, OwnerSet, DEFAULT_ADMIN_ROLE,
+    AccessControl, Ownable2Step, OwnerAuthorization, OwnerSet, Role,
+    RoleAuthorization, DEFAULT_ADMIN_ROLE,
 };
 use dusk_contract_standards::auth::{
     ActionEnvelope, AuthorizationManager, AuthorizedAction,
@@ -66,11 +67,7 @@ fn env_usize(name: &str) -> Option<usize> {
 }
 
 fn principal(index: u8) -> Principal {
-    if index == 0 {
-        Principal::Contract(ContractId::from_bytes([0u8; 32]))
-    } else {
-        Principal::Phoenix([index; 32])
-    }
+    Principal::Contract(ContractId::from_bytes([index; 32]))
 }
 
 fn principal_strategy() -> BoxedStrategy<Principal> {
@@ -108,6 +105,60 @@ fn role(index: u8) -> [u8; 32] {
     let mut role = [0u8; 32];
     role[0] = index;
     role
+}
+
+fn owner_set_auth(
+    owners: &OwnerSet,
+    principal: Principal,
+) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    owners.authorize_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn ownable_owner_auth(
+    ownable: &Ownable2Step,
+    principal: Principal,
+) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    ownable.authorize_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn ownable_pending_auth(
+    ownable: &Ownable2Step,
+    principal: Principal,
+) -> OwnerAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    ownable.authorize_pending_owner(
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
+}
+
+fn role_auth(
+    access: &AccessControl,
+    role: Role,
+    principal: Principal,
+) -> RoleAuthorization {
+    let mut authorizations = AuthorizationManager::new();
+    access.authorize_role(
+        role,
+        &mut authorizations,
+        CallContext::from_principal(principal),
+        None,
+        0,
+    )
 }
 
 fn amount_strategy() -> BoxedStrategy<u64> {
@@ -1033,7 +1084,9 @@ fn authorization_probe(case: AuthCase) -> (bool, u64) {
             let checked_role = role(40);
             let mut access = AccessControl::new();
             access.init_admin(principal(1));
-            access.grant_role(principal(1), checked_role, principal(2));
+            let authorization =
+                role_auth(&access, DEFAULT_ADMIN_ROLE, principal(1));
+            access.grant_role(authorization, checked_role, principal(2));
             access.authorize_role_action(
                 checked_role,
                 &mut authorizations,
@@ -1174,7 +1227,9 @@ fn phoenix_authorization_probe(case: PhoenixAuthCase) -> (bool, u64, bool) {
             let checked_role = role(57);
             let mut access = AccessControl::new();
             access.init_admin(principal(1));
-            access.grant_role(principal(1), checked_role, principal(2));
+            let authorization =
+                role_auth(&access, DEFAULT_ADMIN_ROLE, principal(1));
+            access.grant_role(authorization, checked_role, principal(2));
             access.authorize_role_action(
                 checked_role,
                 &mut authorizations,
@@ -1291,15 +1346,22 @@ fn apply_owner_set_model(
 
 fn apply_owner_set(owners: &mut OwnerSet, op: &OwnerSetOp) -> bool {
     catch_unwind(AssertUnwindSafe(|| match *op {
-        OwnerSetOp::Add { caller, owner } => owners.add_owner(caller, owner),
+        OwnerSetOp::Add { caller, owner } => {
+            let authorization = owner_set_auth(owners, caller);
+            owners.add_owner(authorization, owner);
+        }
         OwnerSetOp::Remove { caller, owner } => {
-            owners.remove_owner(caller, owner)
+            let authorization = owner_set_auth(owners, caller);
+            owners.remove_owner(authorization, owner);
         }
         OwnerSetOp::Replace {
             caller,
             old_owner,
             new_owner,
-        } => owners.replace_owner(caller, old_owner, new_owner),
+        } => {
+            let authorization = owner_set_auth(owners, caller);
+            owners.replace_owner(authorization, old_owner, new_owner);
+        }
     }))
     .is_ok()
 }
@@ -1400,13 +1462,16 @@ fn apply_ownable2_step(
 ) -> bool {
     catch_unwind(AssertUnwindSafe(|| match *op {
         Ownable2StepOp::Transfer { caller, new_owner } => {
-            ownable.transfer_ownership(caller, new_owner);
+            let authorization = ownable_owner_auth(ownable, caller);
+            ownable.transfer_ownership(authorization, new_owner);
         }
         Ownable2StepOp::Accept { caller } => {
-            ownable.accept_ownership(caller);
+            let authorization = ownable_pending_auth(ownable, caller);
+            ownable.accept_ownership(authorization);
         }
         Ownable2StepOp::Renounce { caller } => {
-            ownable.renounce_ownership(caller);
+            let authorization = ownable_owner_auth(ownable, caller);
+            ownable.renounce_ownership(authorization);
         }
     }))
     .is_ok()
@@ -1511,6 +1576,9 @@ impl AccessModel {
                 true
             }
             AccessOp::Renounce { role, caller } => {
+                if !self.has_role(role, caller) {
+                    return false;
+                }
                 if let Some(role) = self.roles.get_mut(&role) {
                     role.members.remove(&caller);
                 }
@@ -1634,20 +1702,33 @@ fn apply_access(access: &mut AccessControl, op: &AccessOp) -> bool {
             caller,
             role,
             account,
-        } => access.grant_role(caller, role, account),
+        } => {
+            let authorization =
+                role_auth(access, access.get_role_admin(role), caller);
+            access.grant_role(authorization, role, account);
+        }
         AccessOp::Revoke {
             caller,
             role,
             account,
-        } => access.revoke_role(caller, role, account),
+        } => {
+            let authorization =
+                role_auth(access, access.get_role_admin(role), caller);
+            access.revoke_role(authorization, role, account);
+        }
         AccessOp::Renounce { role, caller } => {
-            access.renounce_role(role, caller)
+            let authorization = role_auth(access, role, caller);
+            access.renounce_role(role, authorization);
         }
         AccessOp::SetRoleAdmin {
             caller,
             role,
             admin_role,
-        } => access.set_role_admin(caller, role, admin_role),
+        } => {
+            let authorization =
+                role_auth(access, access.get_role_admin(role), caller);
+            access.set_role_admin(authorization, role, admin_role);
+        }
     }))
     .is_ok()
 }
@@ -3033,6 +3114,26 @@ proptest! {
         prop_assert_eq!(pending.deadline, now + ttl);
 
         let before = multisig_snapshot(&controller, id);
+        let mismatched_target_confirm = catch_unwind(AssertUnwindSafe(|| {
+            controller.propose(
+                id,
+                multisig_target(contract_seed, arg_seed.wrapping_add(1), salt_seed),
+                owners[(proposer + 1) % owners.len()],
+                now,
+            );
+        }))
+        .is_ok();
+        prop_assert!(
+            !mismatched_target_confirm,
+            "existing id accepted a mismatched target",
+        );
+        prop_assert_eq!(
+            multisig_snapshot(&controller, id),
+            before,
+            "failed mismatched target proposal mutated controller state",
+        );
+
+        let before = multisig_snapshot(&controller, id);
         let outsider_confirm = catch_unwind(AssertUnwindSafe(|| {
             controller.confirm(id, outsider, now);
         }))
@@ -3063,8 +3164,8 @@ proptest! {
         .is_ok();
         prop_assert!(!expired_confirm, "expired proposal was confirmed");
         prop_assert!(
-            expired.proposal(id).is_none(),
-            "expired proposal was not pruned",
+            expired.proposal(id).is_some(),
+            "failed expired confirmation mutated pending proposal",
         );
         prop_assert!(
             expired.tombstone_expiry(id).is_none(),
