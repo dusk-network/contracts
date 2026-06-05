@@ -2,6 +2,7 @@
 members = [
     "dusk-contract-standards",
     "examples/drc20_roles_pausable",
+    "examples/drc721_collection",
     "examples/moonlight_call_router",
     "examples/multisig_controller",
 ]
