@@ -137,7 +137,7 @@ impl ThresholdMultisig {
         approvals: &[SignedAuthorization],
         envelope: ActionEnvelope,
         now: u64,
-    ) -> Vec<Principal> {
+    ) -> MultisigQuorum {
         let (quorum, verified) = self.verify_action_with_witnesses(
             authorizations,
             context,
@@ -148,7 +148,7 @@ impl ThresholdMultisig {
         for approval in verified {
             authorizations.consume_verified(approval);
         }
-        quorum.signers
+        quorum
     }
 
     /// Verifies that the observed caller plus supplied signed approvals satisfy

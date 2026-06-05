@@ -1,4 +1,4 @@
-STANDARDS_EXAMPLES := standards/examples/drc20_roles_pausable standards/examples/drc721_collection standards/examples/multisig_controller standards/examples/proxy_counter
+STANDARDS_EXAMPLES := standards/examples/authorization_counter standards/examples/drc20_roles_pausable standards/examples/drc721_collection standards/examples/multisig_controller standards/examples/proxy_counter
 STANDARDS_TEST_HELPERS := standards/examples/moonlight_call_router
 STANDARDS_WASM_CONTRACTS := $(STANDARDS_EXAMPLES) $(STANDARDS_TEST_HELPERS)
 LEGACY_SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
