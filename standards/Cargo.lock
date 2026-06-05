@@ -805,6 +805,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "drc20-roles-pausable"
+version = "0.1.0"
+dependencies = [
+ "bytecheck",
+ "dusk-contract-standards",
+ "dusk-core",
+ "dusk-data-driver",
+ "dusk-forge",
+ "rkyv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dusk-bls12_381"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1612,6 +1626,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8a240ddb74feaf34a79a7add65a741f3167852fba007066dcac1ca548d89c08"
 dependencies = [
  "adler",
+]
+
+[[package]]
+name = "moonlight-call-router"
+version = "0.1.0"
+dependencies = [
+ "bytecheck",
+ "dusk-core",
+ "dusk-forge",
+ "rkyv",
 ]
 
 [[package]]

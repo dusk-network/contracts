@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "dusk-contract-standards",
+    "examples/drc20_roles_pausable",
+    "examples/moonlight_call_router",
     "examples/multisig_controller",
 ]
 
