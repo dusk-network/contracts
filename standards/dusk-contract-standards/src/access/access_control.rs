@@ -83,6 +83,20 @@ impl AccessControl {
 
     /// Bootstraps the default admin role.
     pub fn init_admin(&mut self, admin: Principal) {
+        self.init_admin_with_roles(admin, core::iter::empty::<Role>());
+    }
+
+    /// Bootstraps the default admin role and seeds additional initial roles.
+    ///
+    /// This is intended for contract initialization only. It keeps initial role
+    /// seeding inside the same one-time initialization gate as the default
+    /// admin, while regular role changes still require a fresh authorization
+    /// witness.
+    pub fn init_admin_with_roles(
+        &mut self,
+        admin: Principal,
+        roles: impl IntoIterator<Item = Role>,
+    ) {
         if admin.is_zero() {
             panic!("{}", error::ZERO_PRINCIPAL);
         }
@@ -94,6 +108,13 @@ impl AccessControl {
             .or_insert_with(|| RoleData::new(DEFAULT_ADMIN_ROLE))
             .members
             .insert(admin);
+        for role in roles {
+            self.roles
+                .entry(role)
+                .or_insert_with(|| RoleData::new(DEFAULT_ADMIN_ROLE))
+                .members
+                .insert(admin);
+        }
     }
 
     /// Returns true when `account` has `role`.

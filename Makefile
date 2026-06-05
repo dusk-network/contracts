@@ -1,5 +1,6 @@
-STANDARDS_EXAMPLES := standards/examples/multisig_controller
-STANDARDS_WASM_CONTRACTS := $(STANDARDS_EXAMPLES)
+STANDARDS_EXAMPLES := standards/examples/drc20_roles_pausable standards/examples/multisig_controller
+STANDARDS_TEST_HELPERS := standards/examples/moonlight_call_router
+STANDARDS_WASM_CONTRACTS := $(STANDARDS_EXAMPLES) $(STANDARDS_TEST_HELPERS)
 LEGACY_SUBDIRS := tests/alice tests/bob tests/charlie genesis/transfer genesis/stake tests/host_fn
 STANDARDS_PROPTEST_CASES ?= 8192
 STANDARDS_PROPTEST_MAX_SHRINK_ITERS ?= 16384
@@ -35,7 +36,7 @@ standards-clippy: ## Run standards clippy without the Dusk compiler bundle
 	$(MAKE) -C standards/dusk-contract-standards clippy
 	$(MAKE) $(STANDARDS_WASM_CONTRACTS) MAKECMDGOALS=clippy
 
-standards-ci: standards-fmt standards-check standards-clippy standards-test standards-wasm ## Run regular standards CI checks
+standards-ci: standards-fmt standards-check standards-clippy standards-wasm standards-test ## Run regular standards CI checks
 
 standards-data-drivers: ## Generate Forge data-driver WASM for standards reference contracts
 	@if [ -n "$(STANDARDS_EXAMPLES)" ]; then \

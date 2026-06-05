@@ -631,6 +631,13 @@ fn access_control_admin_roles_and_pausable_are_pinned() {
     assert!(access.has_role(DEFAULT_ADMIN_ROLE, admin));
     assert_panics(|| access.init_admin(admin));
 
+    let mut seeded = AccessControl::new();
+    seeded.init_admin_with_roles(admin, [role, admin_role]);
+    assert!(seeded.has_role(DEFAULT_ADMIN_ROLE, admin));
+    assert!(seeded.has_role(role, admin));
+    assert!(seeded.has_role(admin_role, admin));
+    assert_panics(|| seeded.init_admin_with_roles(admin, [role]));
+
     let admin_auth = role_auth(&access, DEFAULT_ADMIN_ROLE, admin);
     access.grant_role(admin_auth, role, member);
     assert!(access.has_role(role, member));
