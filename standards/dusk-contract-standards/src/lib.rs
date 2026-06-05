@@ -29,5 +29,6 @@ pub mod access;
 pub mod auth;
 pub mod core;
 pub mod governance;
+pub mod proxy;
 pub mod security;
 pub mod token;

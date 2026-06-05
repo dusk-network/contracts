@@ -4,11 +4,17 @@
 //
 // Copyright (c) DUSK NETWORK. All rights reserved.
 
-//! Governance primitives.
+//! Governance and scheduling primitives.
 
+pub mod controller;
 pub mod multisig;
 pub mod multisig_controller;
+pub mod timelock;
 
+pub use controller::{
+    TimelockController, CANCELLER_ROLE, EXECUTOR_ROLE, PROPOSER_ROLE,
+    TIMELOCK_ADMIN_ROLE,
+};
 pub use multisig::{
     MultisigApprovals, MultisigConfig, MultisigQuorum, Threshold,
     ThresholdMultisig,
@@ -23,3 +29,4 @@ pub use multisig_controller::{
     MULTISIG_OPERATION_CONFIRMED_TOPIC, MULTISIG_OPERATION_EXECUTED_TOPIC,
     MULTISIG_OPERATION_PROPOSED_TOPIC, MULTISIG_TIME_LIMITS_UPDATED_TOPIC,
 };
+pub use timelock::{OperationId, ScheduledOperation, Timelock};
