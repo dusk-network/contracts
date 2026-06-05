@@ -30,3 +30,4 @@ pub mod auth;
 pub mod core;
 pub mod governance;
 pub mod security;
+pub mod token;
