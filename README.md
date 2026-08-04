@@ -56,3 +56,14 @@ The on-chain ContractId for the stake contract is:
 
 Reference contracts, design notes, and security documentation are added in the
 follow-up standards PRs.
+
+## Building & Dependency Policy
+
+The genesis contracts are already deployed, so the root legacy/genesis workspace
+builds with locked dependency resolution (`--locked`): a build fails rather than
+silently resolving a different dependency graph. Run `make check-locked-deps` to
+validate the root lockfile and the pinned allocator version. Intentional changes
+to dependencies used in genesis contract WASM must follow
+[docs/dependency-updates.md](docs/dependency-updates.md). The `standards`
+workspace is reference material and is not subject to this policy.
+

@@ -7,6 +7,7 @@ wasm: ## Generate the optimized WASM for the contract given
 	@RUSTFLAGS="$(RUSTFLAGS) --remap-path-prefix $(HOME)= -C link-args=-zstack-size=65536" \
 	CARGO_TARGET_DIR=$(DUSK_TARGET_DIR) \
     	cargo +dusk build \
+    		--locked \
     		--release \
     		--color=always \
     		-Z build-std=core,alloc,panic_abort \

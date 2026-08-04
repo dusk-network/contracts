@@ -2,7 +2,7 @@ TARGET_DIR ?= ../../target
 DUSK_TARGET_DIR:="$(TARGET_DIR)/dusk"
 
 all: ## Build the stake contract
-	@cargo build --release
+	@cargo build --locked --release
 
 help: ## Display this help screen
 	@grep -h \
@@ -10,26 +10,27 @@ help: ## Display this help screen
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 check: wasm ## Run the Rust check on the project features
-	@cargo check --target wasm32-unknown-unknown
-	@cargo check
+	@cargo check --locked --target wasm32-unknown-unknown
+	@cargo check --locked
 
 test: wasm ## Perform the contract tests defined in the host contract
-	@cargo test --release
+	@cargo test --locked --release
 
 wasm: ## Generate the optimized WASM for the contract given
 	@RUSTFLAGS="$(RUSTFLAGS) --remap-path-prefix $(HOME)= -C link-args=-zstack-size=65536" \
 	CARGO_TARGET_DIR=$(DUSK_TARGET_DIR) \
     	cargo +dusk build \
+    		--locked \
     		--release \
     		--color=always \
 			-Z build-std=core,alloc \
     		--target wasm32-unknown-unknown
 			
 clippy: ## Run clippy
-	@cargo +dusk clippy --all-features --release -- -D warnings
-	@cargo +dusk clippy -Z build-std=core,alloc --release --target wasm32-unknown-unknown -- -D warnings
+	@cargo +dusk clippy --locked --all-features --release -- -D warnings
+	@cargo +dusk clippy --locked -Z build-std=core,alloc --release --target wasm32-unknown-unknown -- -D warnings
 
 doc: ## Run doc gen
-	@cargo doc --release
+	@cargo doc --locked --release
 
 .PHONY: all check test wasm help

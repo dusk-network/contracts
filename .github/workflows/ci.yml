@@ -26,6 +26,7 @@ jobs:
               - 'scripts/setup-compiler.sh'
               - 'scripts/download-rusk.sh'
               - 'scripts/build-test-contracts.sh'
+              - 'scripts/check-locked-deps.sh'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'Makefile'
@@ -51,13 +52,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dsherret/rust-toolchain-file@v1
       - run: cargo install --git https://github.com/dusk-network/cargo-dusk-analyzer
+      # cargo dusk-analyzer is a custom subcommand and does not accept --locked,
+      # so validate locked resolution of the root workspace up front. The root
+      # toolchain cannot parse some newer host-only manifests, so filter to the
+      # contract target platform.
+      - run: cargo metadata --locked --format-version 1 --filter-platform wasm32-unknown-unknown > /dev/null
       - run: cargo dusk-analyzer
       - run: rustup toolchain install nightly-2026-02-27 --profile minimal --component rust-src --component rustfmt --component clippy --target wasm32-unknown-unknown
       - run: cd standards && cargo dusk-analyzer
 
+  locked_deps:
+    name: Locked dependency preflight
+    needs: changes
+    if: needs.changes.outputs.legacy == 'true'
+    runs-on: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dsherret/rust-toolchain-file@v1
+      - run: ./scripts/check-locked-deps.sh
+
   clippy:
     name: Clippy check
-    needs: changes
+    needs: [changes, locked_deps]
     if: needs.changes.outputs.legacy == 'true'
     runs-on: core
     steps:
@@ -68,7 +84,7 @@ jobs:
 
   test:
     name: Run Tests
-    needs: changes
+    needs: [changes, locked_deps]
     if: needs.changes.outputs.legacy == 'true'
     runs-on: core
     steps:

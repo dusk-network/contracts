@@ -14,6 +14,9 @@ help: ## Display this help screen
 		-E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
+check-locked-deps: ## Validate both workspace lockfiles and pinned allocator versions
+	@./scripts/check-locked-deps.sh
+
 test: wasm ## Run all the tests in the subfolder
 	$(MAKE) $(LEGACY_SUBDIRS) MAKECMDGOALS=test
 
@@ -67,4 +70,4 @@ doc: $(LEGACY_SUBDIRS) ## Run doc gen
 $(LEGACY_SUBDIRS) $(STANDARDS_WASM_CONTRACTS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
-.PHONY: all test help standards-fmt standards-check standards-test standards-wasm standards-clippy standards-ci standards-data-drivers standards-properties standards-data-driver-fuzz standards-hardening $(LEGACY_SUBDIRS) $(STANDARDS_WASM_CONTRACTS)
+.PHONY: all test help check-locked-deps standards-fmt standards-check standards-test standards-wasm standards-clippy standards-ci standards-data-drivers standards-properties standards-data-driver-fuzz standards-hardening $(LEGACY_SUBDIRS) $(STANDARDS_WASM_CONTRACTS)
