@@ -209,19 +209,141 @@ fn principal_bytes_zero_and_ordering_are_stable() {
 
 #[cfg(feature = "serde")]
 #[test]
-fn principal_serde_roundtrips_all_kinds() {
-    let secret = moonlight_secret(22);
-    let public = BlsPublicKey::from(&secret);
-    let principals = [
-        Principal::moonlight(&public),
-        Principal::phoenix([23u8; 32]),
-        Principal::contract(contract(24)),
+fn principal_json_uses_dusk_addresses() {
+    use serde_json::json;
+
+    let moonlight = BlsPublicKey::from(&moonlight_secret(22));
+    let phoenix = SchnorrPublicKey::from(&phoenix_secret(23));
+    let id = contract(24);
+
+    // Each kind is written the way dusk-core writes the same key or id.
+    for (principal, expected) in [
+        (
+            Principal::moonlight(&moonlight),
+            json!({ "Moonlight": moonlight }),
+        ),
+        (
+            Principal::phoenix_public_key(&phoenix),
+            json!({ "Phoenix": phoenix }),
+        ),
+        (Principal::contract(id), json!({ "Contract": id })),
+    ] {
+        let value = serde_json::to_value(principal).unwrap();
+        assert_eq!(value, expected);
+        assert_eq!(
+            serde_json::from_value::<Principal>(value).unwrap(),
+            principal
+        );
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn principal_json_rejects_invalid_keys() {
+    use dusk_bytes::Serializable;
+    use dusk_core::BlsScalar;
+    use serde_json::json;
+
+    // Reading: an address must be a valid key. The Moonlight identity and the
+    // Phoenix points (0, 1) and (0, -1) are on their curves, but no secret key
+    // controls them.
+    let mut identity_bytes = [0u8; 96];
+    identity_bytes[0] = 0xc0;
+    let identity = BlsPublicKey::from_bytes(&identity_bytes).unwrap();
+    let identity = json!({ "Moonlight": identity }).to_string();
+    let mut phoenix_identity_bytes = [0u8; 32];
+    phoenix_identity_bytes[0] = 1;
+    let phoenix = |bytes: [u8; 32]| {
+        let pk = SchnorrPublicKey::from_bytes(&bytes).unwrap();
+        json!({ "Phoenix": pk }).to_string()
+    };
+    let phoenix_identity = phoenix(phoenix_identity_bytes);
+    let phoenix_order_two = phoenix((-BlsScalar::one()).to_bytes());
+    for json in [
+        r#"{"Moonlight": "not an address"}"#,
+        r#"{"Moonlight": "1111"}"#,
+        identity.as_str(),
+        r#"{"Phoenix": "1111"}"#,
+        phoenix_identity.as_str(),
+        phoenix_order_two.as_str(),
+        r#"{"Contract": "00"}"#,
+        r#"{"kind": "Moonlight", "bytes": [1, 2, 3]}"#,
+    ] {
+        assert!(serde_json::from_str::<Principal>(json).is_err(), "{json}");
+    }
+
+    // Writing: stored bytes that aren't a valid key are written as hex under a
+    // key of their own, which reading rejects.
+    for (principal, expected) in [
+        (
+            Principal::Moonlight([1; BLS_PUBLIC_KEY_BYTES]),
+            json!({ "InvalidMoonlight": "01".repeat(BLS_PUBLIC_KEY_BYTES) }),
+        ),
+        (
+            Principal::Moonlight([7; BLS_PUBLIC_KEY_BYTES]),
+            json!({ "InvalidMoonlight": "07".repeat(BLS_PUBLIC_KEY_BYTES) }),
+        ),
+        (
+            Principal::phoenix([0xff; 32]),
+            json!({ "InvalidPhoenix": "ff".repeat(32) }),
+        ),
+        (
+            Principal::phoenix(phoenix_identity_bytes),
+            json!({ "InvalidPhoenix": format!("01{}", "00".repeat(31)) }),
+        ),
+    ] {
+        let value = serde_json::to_value(principal).unwrap();
+        assert_eq!(value, expected, "{principal:?}");
+        assert!(serde_json::from_value::<Principal>(value).is_err());
+    }
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn principal_json_does_not_alias_moonlight_addresses() {
+    use dusk_bytes::Serializable;
+    use serde_json::json;
+
+    // The BLS12-381 base field modulus, as six little-endian 64-bit limbs.
+    const MODULUS: [u64; 6] = [
+        0xb9fe_ffff_ffff_aaab,
+        0x1eab_fffe_b153_ffff,
+        0x6730_d2a0_f6b0_f624,
+        0x6477_4b84_f385_12bf,
+        0x4b1b_a7b6_434b_acd7,
+        0x1a01_11ea_397f_e69a,
     ];
 
-    for principal in principals {
-        let json = serde_json::to_string(&principal).unwrap();
-        let decoded: Principal = serde_json::from_str(&json).unwrap();
-        assert_eq!(decoded, principal);
+    let pk = BlsPublicKey::from(&moonlight_secret(25));
+    let raw = pk.to_raw_bytes();
+
+    // Bytes 0..48 hold x.c0 as six little-endian limbs. Adding the modulus as
+    // one 384-bit number gives the same field element in a form no key has.
+    let mut x_plus_modulus = raw;
+    let mut carry = 0u128;
+    for (limb, modulus) in x_plus_modulus[..48].chunks_exact_mut(8).zip(MODULUS)
+    {
+        let sum = u128::from(u64::from_le_bytes(limb.try_into().unwrap()))
+            + u128::from(modulus)
+            + carry;
+        limb.copy_from_slice(&(sum as u64).to_le_bytes());
+        carry = sum >> 64;
+    }
+    assert_eq!(carry, 0);
+
+    // Bytes 96..144 hold y.c0. The compressed form keeps only the sign of y.
+    let mut y_changed = raw;
+    y_changed[96] ^= 1;
+
+    for bytes in [x_plus_modulus, y_changed] {
+        // Both compress to the key's address, so only the check against the
+        // key's raw form keeps them from being written as that address.
+        // SAFETY: the point is only compressed, never used as a key.
+        let point = unsafe { BlsPublicKey::from_slice_unchecked(&bytes) };
+        assert_eq!(point.to_bytes(), pk.to_bytes());
+
+        let value = serde_json::to_value(Principal::Moonlight(bytes)).unwrap();
+        assert_eq!(value, json!({ "InvalidMoonlight": hex::encode(bytes) }));
     }
 }
 

@@ -312,8 +312,12 @@ fn access_and_multisig_events_roundtrip_with_rkyv() {
 #[cfg(feature = "serde")]
 #[test]
 fn access_and_multisig_events_roundtrip_with_serde_json() {
-    let owner = principal(11);
-    let next = principal(12);
+    // JSON writes a principal as its address, so these must be real keys.
+    let owner =
+        Principal::moonlight(&BlsPublicKey::from(&moonlight_secret(11)));
+    let next = Principal::phoenix_public_key(&SchnorrPublicKey::from(
+        &phoenix_secret(12),
+    ));
     let operation_id = [13u8; 32];
     let authority = MultisigAuthorityUpdated {
         previous_owners: vec![owner],
