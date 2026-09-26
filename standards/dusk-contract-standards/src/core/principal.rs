@@ -10,11 +10,15 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 
 use bytecheck::CheckBytes;
+#[cfg(feature = "serde")]
+use dusk_bytes::Serializable;
 use dusk_core::abi::ContractId;
 use dusk_core::signatures::bls::PublicKey as BlsPublicKey;
 use dusk_core::signatures::schnorr::PublicKey as SchnorrPublicKey;
 use dusk_core::JubJubAffine;
 use rkyv::{Archive, Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use serde::de::Error as _;
 
 /// Raw byte length of a Dusk Moonlight BLS public key.
 pub const BLS_PUBLIC_KEY_BYTES: usize = 193;
@@ -147,28 +151,87 @@ impl Ord for Principal {
     }
 }
 
+/// JSON writes a principal in the form dusk-core uses for the same key or id:
+///
+/// ```text
+/// {"Moonlight": "<base58 BLS public key>"}
+/// {"Phoenix": "<base58 Schnorr public key>"}
+/// {"Contract": "<hex contract id>"}
+/// ```
+///
+/// The Moonlight form is the address a wallet shows. The Phoenix form is the
+/// base58 of the 32-byte Schnorr public key that signs a Phoenix
+/// authorization, not a wallet's 64-byte Phoenix address.
+///
+/// The stored bytes don't change. Reading checks that the key is valid: on the
+/// curve, in the prime-order subgroup and not the identity. Writing gives an
+/// address only when the stored bytes are exactly those of a valid key, so a
+/// JSON address always maps to exactly the stored principal.
+///
+/// A contract doesn't check the principals in its call arguments, so stored
+/// bytes need not be a valid key. Writing never fails: such bytes are written
+/// as hex under a key of their own, which reading rejects:
+///
+/// ```text
+/// {"InvalidMoonlight": "<hex of the 193 stored bytes>"}
+/// {"InvalidPhoenix": "<hex of the 32 stored bytes>"}
+/// ```
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+enum Address {
+    Moonlight(BlsPublicKey),
+    Phoenix(SchnorrPublicKey),
+    Contract(ContractId),
+    #[serde(skip_deserializing, serialize_with = "hex::serde::serialize")]
+    InvalidMoonlight([u8; BLS_PUBLIC_KEY_BYTES]),
+    #[serde(skip_deserializing, serialize_with = "hex::serde::serialize")]
+    InvalidPhoenix([u8; 32]),
+}
+
+#[cfg(feature = "serde")]
+impl Address {
+    /// Returns the address of a stored principal, or its invalid form when
+    /// the stored bytes aren't exactly those of a valid key.
+    fn of(principal: &Principal) -> Self {
+        match *principal {
+            Principal::Moonlight(bytes) => Self::moonlight_key(&bytes)
+                .map_or(Self::InvalidMoonlight(bytes), Self::Moonlight),
+            Principal::Phoenix(bytes) => Self::phoenix_key(&bytes)
+                .map_or(Self::InvalidPhoenix(bytes), Self::Phoenix),
+            Principal::Contract(id) => Self::Contract(id),
+        }
+    }
+
+    /// Returns the valid key whose raw form is exactly `bytes`.
+    fn moonlight_key(
+        bytes: &[u8; BLS_PUBLIC_KEY_BYTES],
+    ) -> Option<BlsPublicKey> {
+        // The last byte is the infinity flag, which must be 0 or 1.
+        if bytes[BLS_PUBLIC_KEY_BYTES - 1] > 1 {
+            return None;
+        }
+        // SAFETY: `from_slice_unchecked` only copies the bytes into a point
+        // without checking it. The point is used only to get its compressed
+        // form, which `from_bytes` then checks.
+        let unchecked = unsafe { BlsPublicKey::from_slice_unchecked(bytes) };
+        let pk = BlsPublicKey::from_bytes(&unchecked.to_bytes()).ok()?;
+        (pk.is_valid() && pk.to_raw_bytes() == *bytes).then_some(pk)
+    }
+
+    /// Returns the valid key whose compressed form is exactly `bytes`.
+    fn phoenix_key(bytes: &[u8; 32]) -> Option<SchnorrPublicKey> {
+        let pk = SchnorrPublicKey::from_bytes(bytes).ok()?;
+        (pk.is_valid() && pk.to_bytes() == *bytes).then_some(pk)
+    }
+}
+
 #[cfg(feature = "serde")]
 impl serde::Serialize for Principal {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        use serde::ser::SerializeStruct;
-
-        let mut state = serializer.serialize_struct("Principal", 2)?;
-        state.serialize_field("kind", &self.kind())?;
-        match self {
-            Self::Moonlight(bytes) => {
-                state.serialize_field("bytes", &bytes.as_slice())?
-            }
-            Self::Phoenix(bytes) => {
-                state.serialize_field("bytes", &bytes.as_slice())?
-            }
-            Self::Contract(id) => {
-                state.serialize_field("bytes", &id.to_bytes().as_slice())?
-            }
-        }
-        state.end()
+        serde::Serialize::serialize(&Address::of(self), serializer)
     }
 }
 
@@ -178,44 +241,18 @@ impl<'de> serde::Deserialize<'de> for Principal {
     where
         D: serde::Deserializer<'de>,
     {
-        #[derive(serde::Deserialize)]
-        struct PrincipalJson {
-            kind: PrincipalKind,
-            bytes: Vec<u8>,
-        }
-
-        let principal =
-            <PrincipalJson as serde::Deserialize>::deserialize(deserializer)?;
-        match principal.kind {
-            PrincipalKind::Moonlight => {
-                let bytes: [u8; BLS_PUBLIC_KEY_BYTES] =
-                    principal.bytes.try_into().map_err(|bytes: Vec<u8>| {
-                        serde::de::Error::invalid_length(
-                            bytes.len(),
-                            &"193 Moonlight public-key bytes",
-                        )
-                    })?;
-                Ok(Self::Moonlight(bytes))
+        match <Address as serde::Deserialize>::deserialize(deserializer)? {
+            Address::Moonlight(pk) if pk.is_valid() => Ok(Self::moonlight(&pk)),
+            Address::Phoenix(pk) if pk.is_valid() => {
+                Ok(Self::phoenix_public_key(&pk))
             }
-            PrincipalKind::Phoenix => {
-                let bytes: [u8; 32] =
-                    principal.bytes.try_into().map_err(|bytes: Vec<u8>| {
-                        serde::de::Error::invalid_length(
-                            bytes.len(),
-                            &"32 Phoenix public-key bytes",
-                        )
-                    })?;
-                Ok(Self::Phoenix(bytes))
+            Address::Contract(id) => Ok(Self::contract(id)),
+            // Reading never gives the invalid forms: they skip deserializing.
+            Address::Moonlight(_) | Address::InvalidMoonlight(_) => {
+                Err(D::Error::custom("invalid Moonlight public key"))
             }
-            PrincipalKind::Contract => {
-                let bytes: [u8; 32] =
-                    principal.bytes.try_into().map_err(|bytes: Vec<u8>| {
-                        serde::de::Error::invalid_length(
-                            bytes.len(),
-                            &"32 contract-id bytes",
-                        )
-                    })?;
-                Ok(Self::Contract(ContractId::from_bytes(bytes)))
+            Address::Phoenix(_) | Address::InvalidPhoenix(_) => {
+                Err(D::Error::custom("invalid Phoenix public key"))
             }
         }
     }

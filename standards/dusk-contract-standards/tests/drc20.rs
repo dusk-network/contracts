@@ -503,10 +503,20 @@ fn drc20_events_roundtrip_with_rkyv() {
 #[test]
 fn drc20_events_roundtrip_with_serde_json() {
     use dusk_contract_standards::token::drc20::events::{Approval, Transfer};
+    use dusk_core::abi::ContractId;
+    use dusk_core::signatures::bls::{PublicKey, SecretKey};
+    use dusk_core::signatures::schnorr;
+    use dusk_core::JubJubScalar;
+    use rand::SeedableRng;
 
-    let owner = p(21);
-    let spender = p(22);
-    let receiver = p(23);
+    // JSON writes a principal as its address, so these must be real keys.
+    let mut rng = rand::rngs::StdRng::seed_from_u64(21);
+    let owner =
+        Principal::moonlight(&PublicKey::from(&SecretKey::random(&mut rng)));
+    let spender = Principal::phoenix_public_key(&schnorr::PublicKey::from(
+        &schnorr::SecretKey::from(JubJubScalar::from(22u64)),
+    ));
+    let receiver = Principal::contract(ContractId::from_bytes([23; 32]));
 
     let transfer = Transfer {
         from: owner,
@@ -528,4 +538,54 @@ fn drc20_events_roundtrip_with_serde_json() {
 
     assert!(serde_json::from_str::<Transfer>(r#"{"from":[]}"#).is_err());
     assert!(serde_json::from_str::<Approval>(r#"{"owner":[]}"#).is_err());
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn drc20_events_with_invalid_principals_write_to_json() {
+    use dusk_contract_standards::core::BLS_PUBLIC_KEY_BYTES;
+    use dusk_core::abi::ContractId;
+    use serde_json::json;
+
+    // The token only checks that a principal isn't zero, so any caller can
+    // name bytes that aren't a valid key. Its events must still be written.
+    let owner = Principal::contract(ContractId::from_bytes([24; 32]));
+    let moonlight = Principal::Moonlight([1; BLS_PUBLIC_KEY_BYTES]);
+    let phoenix = Principal::phoenix([0xff; 32]);
+    let mut token = init_token(vec![InitBalance {
+        account: owner,
+        amount: 10,
+    }]);
+
+    let transfer = token.transfer(
+        owner,
+        TransferCall {
+            to: moonlight,
+            amount: 0,
+        },
+    );
+    assert_eq!(
+        serde_json::to_value(transfer).unwrap(),
+        json!({
+            "from": owner,
+            "to": { "InvalidMoonlight": "01".repeat(BLS_PUBLIC_KEY_BYTES) },
+            "amount": 0,
+        })
+    );
+
+    let approval = token.approve(
+        owner,
+        ApproveCall {
+            spender: phoenix,
+            amount: 5,
+        },
+    );
+    assert_eq!(
+        serde_json::to_value(approval).unwrap(),
+        json!({
+            "owner": owner,
+            "spender": { "InvalidPhoenix": "ff".repeat(32) },
+            "amount": 5,
+        })
+    );
 }
